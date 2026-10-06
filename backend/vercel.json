@@ -11,5 +11,19 @@
       "src": "/(.*)",
       "dest": "api/index.ts"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/daily-summary",
+      "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/cron/weekly-report",
+      "schedule": "30 3 * * 1"
+    },
+    {
+      "path": "/api/cron/low-stock",
+      "schedule": "30 3 * * *"
+    }
   ]
 }
