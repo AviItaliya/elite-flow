@@ -62,22 +62,26 @@ model Company {
 }
 
 model User {
-  id           String          @id @default(uuid())
-  companyId    String?
-  name         String
-  email        String          @unique
-  password     String
-  role         UserRole        @default(USER)
-  status       UserStatus      @default(ACTIVE)
-  isVerified   Boolean         @default(false)
-  company      Company?        @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  projects     ProjectMember[]
-  assignedTask Task[]          @relation("TaskAssignee")
-  createdTasks Task[]          @relation("TaskCreator")
-  comments     Comment[]
-  taskHistory  TaskHistory[]
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  id                      String                   @id @default(uuid())
+  companyId               String?
+  name                    String
+  email                   String                   @unique
+  password                String
+  role                    UserRole                 @default(USER)
+  status                  UserStatus               @default(ACTIVE)
+  isVerified              Boolean                  @default(false)
+  company                 Company?                 @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  projects                ProjectMember[]
+  assignedTask            Task[]                   @relation("TaskAssignee")
+  createdTasks            Task[]                   @relation("TaskCreator")
+  comments                Comment[]
+  taskHistory             TaskHistory[]
+  refreshTokens           RefreshToken[]
+  emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens     PasswordResetToken[]
+  loginOtps               LoginOtp[]
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
 }
 
 model Project {
@@ -186,4 +190,57 @@ model Subscription {
   @@index([companyId])
   @@index([planId])
   @@index([status])
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  token     String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(uuid())
+  userId    String
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model LoginOtp {
+  id         String    @id @default(uuid())
+  userId     String
+  otpHash    String
+  expiresAt  DateTime
+  attempts   Int       @default(0)
+  verifiedAt DateTime?
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
 }
