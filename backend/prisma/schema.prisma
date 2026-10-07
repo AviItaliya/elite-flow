@@ -70,6 +70,7 @@ model User {
   role                    UserRole                 @default(USER)
   status                  UserStatus               @default(ACTIVE)
   isVerified              Boolean                  @default(false)
+  deletedAt               DateTime?
   company                 Company?                 @relation(fields: [companyId], references: [id], onDelete: SetNull)
   projects                ProjectMember[]
   assignedTask            Task[]                   @relation("TaskAssignee")

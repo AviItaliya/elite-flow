@@ -1,10 +1,12 @@
 import { prisma } from "../config/database.js";
 
-export const findUserByEmail = async (email: string) => {
-    return prisma.user.findUnique({
-        where: {email},
-    });
-};
+export const findUserByEmail = async (email: string) =>
+  prisma.user.findFirst({
+    where: {
+      email,
+      deletedAt: null,
+    },
+  });
 
 export const createCompany = async (name: string, email: string) => {
     return prisma.company.create({

@@ -11,10 +11,9 @@ export const register = async (req: Request, res: Response) => {
         const result = await registerUser(data);
         return res.status(201).json({
             success: true,
-            message: "Registration successful",
+            message: "Registration successful. Please check your email to verify your account.",
             data: {
                 user: result.user,
-                verificationToken: result.verificationToken,
             },
         });
     } catch (error) {
