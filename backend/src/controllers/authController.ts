@@ -1,8 +1,9 @@
 import { Request, Response } from "express";
-import { forgotPasswordSchema, loginSchema, logoutSchema, refreshTokenSchema, registerSchema, requestOtpSchema, resetPasswordSchema, verifyOtpSchema } from "../validators/authValidator";
+import { forgotPasswordSchema, loginSchema, registerSchema, requestOtpSchema, resetPasswordSchema, verifyOtpSchema } from "../validators/authValidator";
 import { forgotPassword, loginUser, logoutUser, refreshAccessToken, registerUser, resetPassword } from "../services/authService";
 import { verifyEmail } from "../services/emailVerificationService";
 import { requestLoginOtp, verifyLoginOtp } from "../services/otpService";
+import { refreshCookieConfig } from "../config/cookie";
 
 export const register = async (req: Request, res: Response) => {
     try {
@@ -12,9 +13,9 @@ export const register = async (req: Request, res: Response) => {
             success: true,
             message: "Registration successful",
             data: {
-    user: result.user,
-    verificationToken: result.verificationToken,
-  },
+                user: result.user,
+                verificationToken: result.verificationToken,
+            },
         });
     } catch (error) {
         if(error instanceof Error) {
@@ -63,10 +64,14 @@ export const login = async (req:Request, res:Response) => {
     try {
         const data = loginSchema.parse(req.body);
         const result = await loginUser(data);
+        res.cookie("refreshToken", result.refreshToken, refreshCookieConfig);
         return res.status(200).json({
             success: true,
             message: "Login successful",
-            data: result,
+            data: {
+              user: result.user,
+              accessToken: result.accessToken,
+            },
         });
     } catch (error) {
         if(error instanceof Error) {
@@ -84,8 +89,14 @@ export const login = async (req:Request, res:Response) => {
 
 export const refresh = async (req: Request, res: Response) => {
   try {
-    const data = refreshTokenSchema.parse(req.body);
-    const result = await refreshAccessToken(data.refreshToken);
+    const refreshToken = req.cookies.refreshToken;
+    if(!refreshToken) {
+      return res.status(401).json({
+        success: false,
+        message: "Refresh token is missing",
+      });
+    }
+    const result = await refreshAccessToken(refreshToken);
     return res.status(200).json({
       success: true,
       message: "Access token refreshed successfully",
@@ -108,8 +119,15 @@ export const refresh = async (req: Request, res: Response) => {
 
 export const logout = async (req: Request, res: Response) => {
   try {
-    const data = logoutSchema.parse(req.body);
-    await logoutUser(data.refreshToken);
+    const refreshToken = req.cookies.refreshToken;
+    if(!refreshToken) {
+      return res.status(401).json({
+        success: false,
+        message: "Refresh token is missing",
+      });
+    }
+    await logoutUser(refreshToken);
+    res.clearCookie("refreshToken", refreshCookieConfig);
     return res.status(200).json({
       success: true,
       message: "Logout successful",
@@ -223,10 +241,14 @@ export const verifyOtp = async (req: Request, res: Response) => {
   try {
     const data = verifyOtpSchema.parse(req.body);
     const result = await verifyLoginOtp(data);
+    res.cookie("refreshToken", result.refreshToken, refreshCookieConfig);
     return res.status(200).json({
       success: true,
       message: "OTP verified successfully",
-      data: result,
+      data: {
+              user: result.user,
+              accessToken: result.accessToken,
+        },
     });
   } catch (error) {
     if (error instanceof Error) {

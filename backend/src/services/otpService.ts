@@ -1,5 +1,5 @@
 import { authConfig } from "../config/auth";
-import { createLoginOtp, createRefreshToken, findLatestLoginOtp, findUserByEmail, incrementLoginOtpAttempts, markLoginOtpAsVerified } from "../repositories/authRepository";
+import { createLoginOtp, createRefreshToken, findLatestLoginOtp, findUserByEmail, incrementLoginOtpAttempts, invalidateLoginOtp, markLoginOtpAsVerified } from "../repositories/authRepository";
 import { otpEmailTemplate } from "../templates/otpEmail";
 import { generateAccessToken, generateRefreshToken } from "../utils/jwt";
 import { compareOtp, generateOtp, hashOtp } from "../utils/otp";
@@ -23,14 +23,23 @@ export const requestLoginOtp = async (
     throw new Error("Please verify your email before requesting OTP");
   }
 
+  const latestOtp = await findLatestLoginOtp(user.id);
+  if(latestOtp) {
+    const cooldownMilliseconds = authConfig.otpResendCooldownSeconds * 1000;
+    const nextAllowedTime = latestOtp.createdAt.getTime() + cooldownMilliseconds;
+    const remainingMilliseconds = nextAllowedTime - Date.now();
+    if(remainingMilliseconds > 0) {
+      const remainingSeconds = Math.ceil(remainingMilliseconds / 1000);
+      throw new Error(`Please wait ${remainingSeconds} seconds before requesting another OTP`);
+    }
+    await invalidateLoginOtp(latestOtp.id);
+  }
+
   const otp = generateOtp();
 
   const otpHash = hashOtp(otp);
 
-  const expiresAt = new Date(
-    Date.now() +
-      authConfig.otpExpiresInMinutes * 60 * 1000
-  );
+  const expiresAt = new Date(Date.now() + authConfig.otpExpiresInMinutes * 60 * 1000);
 
   await createLoginOtp(
     user.id,
@@ -48,7 +57,6 @@ export const requestLoginOtp = async (
 });
 
   return {
-    otp,
     expiresAt,
   };
 };
@@ -69,7 +77,7 @@ export const verifyLoginOtp = async (
   const loginOtp = await findLatestLoginOtp(user.id);
 
   if (!loginOtp) {
-    throw new Error("OTP not found");
+    throw new Error("Invalid or expired OTP");
   }
 
   if (loginOtp.verifiedAt) {

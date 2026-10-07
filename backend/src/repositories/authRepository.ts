@@ -150,6 +150,7 @@ export const findLatestLoginOtp = async (userId: string) => {
     where: {
       userId,
       verifiedAt: null,
+      invalidatedAt: null,
     },
     orderBy: {
       createdAt: "desc",
@@ -177,6 +178,17 @@ export const incrementLoginOtpAttempts = async (otpId: string) => {
       attempts: {
         increment: 1,
       },
+    },
+  });
+};
+
+export const invalidateLoginOtp = async (otpId: string) => {
+  return prisma.loginOtp.update({
+    where: {
+      id: otpId,
+    },
+    data: {
+      invalidatedAt: new Date(),
     },
   });
 };

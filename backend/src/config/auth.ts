@@ -5,4 +5,5 @@ export const authConfig = {
   passwordResetExpiresInMinutes: 15,
   otpExpiresInMinutes: 5,
   otpMaxAttempts: 5,
+  otpResendCooldownSeconds: 60,
 };

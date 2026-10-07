@@ -232,14 +232,15 @@ model PasswordResetToken {
 }
 
 model LoginOtp {
-  id         String    @id @default(uuid())
-  userId     String
-  otpHash    String
-  expiresAt  DateTime
-  attempts   Int       @default(0)
-  verifiedAt DateTime?
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt  DateTime  @default(now())
+  id            String    @id @default(uuid())
+  userId        String
+  otpHash       String
+  expiresAt     DateTime
+  attempts      Int       @default(0)
+  verifiedAt    DateTime?
+  invalidatedAt DateTime?
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt     DateTime  @default(now())
 
   @@index([userId])
   @@index([expiresAt])
