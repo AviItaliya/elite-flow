@@ -9,6 +9,9 @@ import projectRoutes from "./routes/projectRoutes.js";
 import taskRoutes from "./routes/taskRoutes.js";
 import commentRoutes from "./routes/commentRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
+import superadminRoutes from "./routes/superadminRoutes.js";
+import planRoutes from "./routes/planRoutes.js";
+import subscriptionRoutes from "./routes/subscriptionRoutes.js";
 
 const app = express();
 
@@ -33,6 +36,7 @@ app.get("/api/health", (_req, res) => {
   });
 });
 
+app.use("/api/superadmin", superadminRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/companies", companyRoutes);
@@ -40,5 +44,7 @@ app.use("/api/projects", projectRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use("/api/comments", commentRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/plans", planRoutes);
+app.use("/api/subscriptions", subscriptionRoutes);
 
 export default app;

@@ -169,7 +169,6 @@ model Plan {
   durationDays  Int
   maxUsers      Int
   maxProjects   Int
-  maxStorageMB  Int
   isActive      Boolean        @default(true)
   subscriptions Subscription[]
   createdAt     DateTime       @default(now())

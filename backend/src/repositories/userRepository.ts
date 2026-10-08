@@ -148,3 +148,14 @@ export const softDeleteUser = async (
     },
   });
 };
+
+export const countCompanyUsers = async (
+  companyId: string
+) => {
+  return prisma.user.count({
+    where: {
+      companyId,
+      deletedAt: null,
+    },
+  });
+};

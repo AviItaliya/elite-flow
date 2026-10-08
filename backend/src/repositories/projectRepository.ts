@@ -172,3 +172,13 @@ export const removeProjectMember = async (
     },
   });
 };
+
+export const countCompanyProjects = async (
+  companyId: string
+) => {
+  return prisma.project.count({
+    where: {
+      companyId,
+    },
+  });
+};

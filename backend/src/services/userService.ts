@@ -5,6 +5,8 @@ import {createEmailVerificationToken, findUserByEmail} from "../repositories/aut
 import { generateRandomToken } from "../utils/token.js";
 import { sendEmail } from "./emailService.js";
 import { verificationEmailTemplate } from "../templates/verificationEmail.js";
+import { requireActiveSubscription } from "./subscriptionService.js";
+import { countCompanyUsers } from "../repositories/subscriptionRepository.js";
 
 export const getCurrentUser = async (userId: string) => {
   const user = await findUserById(userId);
@@ -94,6 +96,12 @@ export const createManagedUser = async (
     throw new Error(
       "ADMIN cannot create another ADMIN"
     );
+  }
+
+  const subscription = await requireActiveSubscription(companyId);
+  const currentUserCount = await countCompanyUsers(companyId);
+  if (currentUserCount >= subscription.plan.maxUsers) {
+    throw new Error(`User limit reached for your current plan. Maximum users allowed: ${subscription.plan.maxUsers}`);
   }
 
   const existingUser = await findUserByEmail(

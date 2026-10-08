@@ -1,6 +1,7 @@
-import {addProjectMember, createProject, deleteProject, findProjectByIdAndCompany, findProjectMember, findProjectMembers, findProjectsByCompany, removeProjectMember, updateProject, updateProjectStatus} from "../repositories/projectRepository.js";
+import {addProjectMember, countCompanyProjects, createProject, deleteProject, findProjectByIdAndCompany, findProjectMember, findProjectMembers, findProjectsByCompany, removeProjectMember, updateProject, updateProjectStatus} from "../repositories/projectRepository.js";
 import { findUserByIdAndCompany } from "../repositories/userRepository.js";
 import type {CreateProjectInput, UpdateProjectInput, UpdateProjectStatusInput} from "../validators/projectValidator.js";
+import { requireActiveSubscription } from "./subscriptionService.js";
 
 export const getCompanyProjects = async (companyId: string) => {
   return findProjectsByCompany(companyId);
@@ -15,6 +16,11 @@ export const getCompanyProjectById = async (projectId: string, companyId: string
 };
 
 export const createCompanyProject = async (companyId: string, data: CreateProjectInput) => {
+  const subscription = await requireActiveSubscription(companyId);
+  const currentProjectCount = await countCompanyProjects(companyId);
+  if (currentProjectCount >= subscription.plan.maxProjects) {
+    throw new Error(`Project limit reached for your current plan. Maximum projects allowed: ${subscription.plan.maxProjects}`);
+  }
   if (data.startDate && data.endDate && data.endDate < data.startDate) {
     throw new Error("End date cannot be before start date");
   }
