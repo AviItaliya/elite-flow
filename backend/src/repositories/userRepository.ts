@@ -1,5 +1,47 @@
 import { prisma } from "../config/database.js";
 
+export const findSuperadmin = async () => {
+  return prisma.user.findFirst({
+    where: {
+      role: "SUPERADMIN",
+      deletedAt: null,
+    },
+  });
+};
+
+export const createSuperadmin = async (data: {
+  name: string;
+  email: string;
+  password: string;
+}) => {
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`
+      SELECT pg_advisory_xact_lock(8347291)::text
+    `;
+
+    const existingSuperadmin = await tx.user.findFirst({
+      where: {
+        role: "SUPERADMIN",
+        deletedAt: null,
+      },
+    });
+    if (existingSuperadmin) {
+      throw new Error("Superadmin already exists");
+    }
+    return tx.user.create({
+      data: {
+        name: data.name,
+        email: data.email,
+        password: data.password,
+        role: "SUPERADMIN",
+        companyId: null,
+        status: "ACTIVE",
+        isVerified: true,
+      },
+    });
+  });
+};
+
 export const findUserById = async (userId: string) => {
   return prisma.user.findFirst({
     where: {
