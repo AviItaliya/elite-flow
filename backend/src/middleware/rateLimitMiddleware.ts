@@ -1,17 +1,34 @@
 import rateLimit from "express-rate-limit";
 
-export const otpRequestRateLimiter = rateLimit({
+export const loginRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-
-  limit: 5,
-
+  limit: 10,
   standardHeaders: "draft-8",
-
   legacyHeaders: false,
-
   message: {
     success: false,
-    message:
-      "Too many OTP requests. Please try again later.",
+    message: "Too many login attempts. Please try again later."
+  },
+});
+
+export const otpRequestRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: "Too many OTP requests. Please try again later.",
+  },
+});
+
+export const forgotPasswordRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: "Too many password reset requests. Please try again later.",
   },
 });

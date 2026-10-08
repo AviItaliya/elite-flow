@@ -1,10 +1,10 @@
-import { authConfig } from "../config/auth";
-import { createLoginOtp, createRefreshToken, findLatestLoginOtp, findUserByEmail, incrementLoginOtpAttempts, invalidateLoginOtp, markLoginOtpAsVerified } from "../repositories/authRepository";
-import { otpEmailTemplate } from "../templates/otpEmail";
-import { generateAccessToken, generateRefreshToken } from "../utils/jwt";
-import { compareOtp, generateOtp, hashOtp } from "../utils/otp";
-import { RequestOtpInput, VerifyOtpInput } from "../validators/authValidator";
-import { sendEmail } from "./emailService";
+import { authConfig } from "../config/auth.js";
+import { createLoginOtp, createRefreshToken, findLatestLoginOtp, findUserByEmail, incrementLoginOtpAttempts, invalidateLoginOtp, markLoginOtpAsVerified } from "../repositories/authRepository.js";
+import { otpEmailTemplate } from "../templates/otpEmail.js";
+import { generateAccessToken, generateRefreshToken } from "../utils/jwt.js";
+import { compareOtp, generateOtp, hashOtp } from "../utils/otp.js";
+import { RequestOtpInput, VerifyOtpInput } from "../validators/authValidator.js";
+import { sendEmail } from "./emailService.js";
 
 export const requestLoginOtp = async (
   data: RequestOtpInput

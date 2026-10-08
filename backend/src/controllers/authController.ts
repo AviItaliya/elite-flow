@@ -1,9 +1,9 @@
 import { Request, Response } from "express";
-import { forgotPasswordSchema, loginSchema, registerSchema, requestOtpSchema, resetPasswordSchema, verifyOtpSchema } from "../validators/authValidator";
-import { forgotPassword, loginUser, logoutUser, refreshAccessToken, registerUser, resetPassword } from "../services/authService";
-import { verifyEmail } from "../services/emailVerificationService";
-import { requestLoginOtp, verifyLoginOtp } from "../services/otpService";
-import { refreshCookieConfig } from "../config/cookie";
+import { forgotPasswordSchema, loginSchema, registerSchema, requestOtpSchema, resetPasswordSchema, verifyOtpSchema } from "../validators/authValidator.js";
+import { forgotPassword, loginUser, logoutUser, refreshAccessToken, registerUser, resetPassword } from "../services/authService.js";
+import { verifyEmail } from "../services/emailVerificationService.js";
+import { requestLoginOtp, verifyLoginOtp } from "../services/otpService.js";
+import { refreshCookieConfig } from "../config/cookie.js";
 
 export const register = async (req: Request, res: Response) => {
     try {
@@ -159,11 +159,7 @@ export const forgotPasswordController = async (
 
     return res.status(200).json({
       success: true,
-      message:
-        "If the email exists, a password reset link has been sent",
-      ...(process.env.NODE_ENV === "development" && token
-        ? { resetToken: token }
-        : {}),
+      message: "If the email exists, a password reset link has been sent",
     });
   } catch (error) {
     if (error instanceof Error) {

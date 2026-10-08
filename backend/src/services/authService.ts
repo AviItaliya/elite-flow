@@ -1,12 +1,13 @@
-import { createCompany, createEmailVerificationToken, createPasswordResetToken, createRefreshToken, createUser, findPasswordResetToken, findRefreshToken, findUserByEmail, markPasswordResetTokenAsUsed, revokeRefreshToken, updateUserPassword } from "../repositories/authRepository";
-import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from "../utils/jwt";
-import { comparePassword, hashPassword } from "../utils/password";
-import { generateRandomToken } from "../utils/token";
-import { ForgotPasswordInput, LoginInput, RegisterInput, ResetPasswordInput } from "../validators/authValidator";
-import { prisma } from "../config/database";
-import { sendEmail } from "./emailService";
-import { verificationEmailTemplate } from "../templates/verificationEmail";
-import { passwordResetEmailTemplate } from "../templates/passwordResetEmail";
+import { createCompany, createEmailVerificationToken, createPasswordResetToken, createRefreshToken, createUser, findPasswordResetToken, findRefreshToken, findUserByEmail, markPasswordResetTokenAsUsed, revokeRefreshToken, updateUserPassword } from "../repositories/authRepository.js";
+import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from "../utils/jwt.js";
+import { comparePassword, hashPassword } from "../utils/password.js";
+import { generateRandomToken } from "../utils/token.js";
+import { ForgotPasswordInput, LoginInput, RegisterInput, ResetPasswordInput } from "../validators/authValidator.js";
+import { prisma } from "../config/database.js";
+import { sendEmail } from "./emailService.js";
+import { verificationEmailTemplate } from "../templates/verificationEmail.js";
+import { passwordResetEmailTemplate } from "../templates/passwordResetEmail.js";
+import { authConfig } from "../config/auth.js";
 
 export const registerUser = async (data: RegisterInput) => {
     const existingUSer = await findUserByEmail(data.email);
@@ -80,7 +81,7 @@ export const loginUser = async (data: LoginInput) => {
     });
 
     const refreshTokenExpiresAt = new Date(
-        Date.now() + 7 * 24 * 60 * 60 * 1000
+        Date.now() + authConfig.refreshTokenExpiresInDays * 24 * 60 * 60 * 1000
     );
 
     await createRefreshToken(

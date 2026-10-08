@@ -1,4 +1,6 @@
-import jwt from "jsonwebtoken";
+import jwt, { SignOptions } from "jsonwebtoken";
+import { authConfig } from "../config/auth.js";
+
 const accessSecret = process.env.JWT_ACCESS_SECRET;
 const refreshSecret = process.env.JWT_REFRESH_SECRET;
 
@@ -22,13 +24,13 @@ export interface RefreshTokenPayload {
 
 export const generateAccessToken = (payload: AccessTokenPayload): string => {
     return jwt.sign(payload, accessSecret, {
-        expiresIn: "15m",
+      expiresIn: authConfig.accessTokenExpiresIn as SignOptions["expiresIn"],
     });
 };
 
 export const generateRefreshToken = (payload: RefreshTokenPayload): string => {
     return jwt.sign(payload, refreshSecret, {
-        expiresIn: "7d",
+        expiresIn: `${authConfig.refreshTokenExpiresInDays}d`,
     });
 };
 
