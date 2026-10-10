@@ -14,15 +14,15 @@
   ],
   "crons": [
     {
-      "path": "/api/cron/daily-summary",
+      "path": "/api/email/daily-summary",
       "schedule": "30 3 * * *"
     },
     {
-      "path": "/api/cron/weekly-report",
+      "path": "/api/email/weekly-report",
       "schedule": "30 3 * * 1"
     },
     {
-      "path": "/api/cron/low-stock",
+      "path": "/api/email/low-stock",
       "schedule": "30 3 * * *"
     }
   ]

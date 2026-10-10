@@ -261,7 +261,6 @@ if (!transactionProductId) {
                   }
                 >
                   <option value="STOCK_IN">Stock In</option>
-
                   <option value="STOCK_OUT">Stock Out</option>
                 </select>
               </div>

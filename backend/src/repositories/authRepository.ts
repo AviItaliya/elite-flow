@@ -11,11 +11,13 @@ class AuthRepository {
       },
     });
   }
+
   async findUserById(id: string) {
     return prisma.user.findUnique({
       where: { id },
     });
   }
+
   async createUser(data: { name: string; email: string; password: string }) {
     return prisma.user.create({
       data,
@@ -31,16 +33,19 @@ class AuthRepository {
       },
     });
   }
+
   async findRefreshToken(token: string) {
     return prisma.refreshToken.findUnique({
       where: { token },
     });
   }
+
   async deleteRefreshToken(token: string) {
     return prisma.refreshToken.deleteMany({
       where: { token },
     });
   }
+
   async deleteAllRefreshToken(userId: string) {
     return prisma.refreshToken.deleteMany({
       where: { userId },
@@ -89,6 +94,28 @@ class AuthRepository {
         },
       }),
     ]);
+  }
+  
+  async rotateRefreshToken(oldToken: string, userId: string, newToken: string, expiresAt: Date) {
+    return prisma.$transaction(async (tx) => {
+      const deleted = await tx.refreshToken.deleteMany({
+        where: {
+          token: oldToken,
+          userId,
+        },
+      });
+
+      if (deleted.count !== 1) {
+        throw new AppError("Invalid refresh token", 401);
+      }
+      return tx.refreshToken.create({
+        data: {
+          token: newToken,
+          userId,
+          expiresAt,
+        },
+      });
+    });
   }
 }
 

@@ -43,24 +43,42 @@ class AuthController {
     });
   });
 
+  
   refreshToken = asyncHandler(async (req, res) => {
-    const refreshToken = req.cookies.refreshToken;
+    const refreshToken = req.cookies?.refreshToken;  
     if (!refreshToken) {
       throw new AppError("Refresh token is required", 401);
     }
     const result = await authService.refreshAccessToken(refreshToken);
+    res.cookie("refreshToken", result.refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
     return sendResponse(res, {
       success: true,
       statusCode: 200,
       message: "Access token refreshed successfully",
-      data: result,
+      data: {
+        accessToken: result.accessToken,
+      },
     });
   });
 
+  
   logout = asyncHandler(async (req, res) => {
-    const refreshToken = req.cookies.refreshToken;
-    await authService.logout(refreshToken);
-    res.clearCookie("refreshToken");
+    const refreshToken = req.cookies?.refreshToken;  
+    if (refreshToken) {
+      await authService.logout(refreshToken);
+    }
+    res.clearCookie("refreshToken", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/",
+    });
     return sendResponse(res, {
       success: true,
       statusCode: 200,
