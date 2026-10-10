@@ -1,12 +1,11 @@
 import type { Request, Response } from "express";
 import asyncHandler from "../utils/asyncHandler.js";
-import {
-  createProductSchema,
-  updateProductSchema,
-} from "../validators/productValidation.js";
+import {createProductSchema, updateProductSchema} from "../validators/productValidation.js";
 import productService from "../services/productService.js";
 import { sendResponse } from "../utils/response.js";
 import AppError from "../utils/AppError.js";
+import fs from "node:fs/promises";
+import { productQuerySchema } from "../validators/productQueryValidation.js";
 
 class ProductController {
   create = asyncHandler(async (req: Request, res: Response) => {
@@ -21,7 +20,8 @@ class ProductController {
   });
 
   findAll = asyncHandler(async (req, res) => {
-    const result = await productService.findAll(req.query);
+    const query = productQuerySchema.parse(req.query);
+    const result = await productService.findAll(query);
     return sendResponse(res, {
       success: true,
       statusCode: 200,
@@ -85,18 +85,28 @@ class ProductController {
     return res.end();
   });
 
-  importProducts = asyncHandler(async (req, res) => {
+  
+  importProducts = asyncHandler(async (req: Request, res: Response) => {
     if (!req.file) {
       throw new AppError("Excel file is required.", 400);
+    }  
+    try {
+      const result = await productService.importProducts(req.file.path);
+      return sendResponse(res, {
+        success: true,
+        statusCode: 200,
+        message: "Products imported successfully.",
+        data: result,
+      });
+    } finally {
+      await fs.unlink(req.file.path).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== "ENOENT") {
+          console.error("Failed to remove temporary upload:", error);
+        }
+      });
     }
-    const result = await productService.importProducts(req.file.path);
-    return sendResponse(res, {
-      success: true,
-      statusCode: 200,
-      message: "Products imported successfully.",
-      data: result,
-    });
   });
+
 
   downloadTemplate = asyncHandler(async (req, res) => {
     const workbook = await productService.downloadTemplate();

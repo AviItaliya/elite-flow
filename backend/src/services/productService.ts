@@ -1,24 +1,11 @@
 import { Prisma } from "../generated/prisma/client.js";
-
 import categoryRepository from "../repositories/categoryRepository.js";
 import productRepository from "../repositories/productRepository.js";
 import supplierRepository from "../repositories/supplierRepository.js";
-
 import AppError from "../utils/AppError.js";
-
-import {
-  generateProductExcel,
-  generateProductTemplate,
-  readExcel,
-} from "../utils/excel.js";
-
-import type {
-  CreateProductInput,
-  UpdateProductInput,
-} from "../validators/productValidation.js";
-
-import fs from "fs/promises";
-
+import {generateProductExcel, generateProductTemplate, readExcel} from "../utils/excel.js";
+import { productQuerySchema, type ProductQuery } from "../validators/productQueryValidation.js";
+import type {CreateProductInput, UpdateProductInput} from "../validators/productValidation.js";
 import auditLogService from "./auditLogService.js";
 
 class ProductService {
@@ -71,35 +58,28 @@ class ProductService {
     return product;
   }
 
-  async findAll(query: any) {
+  async findAll(query: ProductQuery) {
     const page = Number(query.page) || 1;
-    const limit = Number(query.limit) || 10;
+    const limit = Number(query.limit) || 10;    
 
     const result = await productRepository.findAll({
-      search: query.search,
-      categoryId: query.categoryId,
-      supplierId: query.supplierId,
-
-      stockStatus:
-        query.stockStatus === "in-stock" ||
-        query.stockStatus === "low-stock" ||
-        query.stockStatus === "out-of-stock"
-          ? query.stockStatus
-          : undefined,
-
-      page,
-      limit,
-      sortBy: query.sortBy || "createdAt",
-      order: query.order === "asc" ? "asc" : "desc",
+      ...(query.search !== undefined && { search: query.search }),
+      ...(query.categoryId !== undefined && { categoryId: query.categoryId }),
+      ...(query.supplierId !== undefined && { supplierId: query.supplierId }),
+      ...(query.stockStatus !== undefined && { stockStatus: query.stockStatus }),
+      page: query.page,
+      limit: query.limit,
+      sortBy: query.sortBy,
+      order: query.order,
     });
 
     return {
       products: result.products,
       pagination: {
-        page,
-        limit,
+        page: query.page,
+        limit: query.limit,
         total: result.total,
-        totalPages: Math.ceil(result.total / limit),
+        totalPages: Math.ceil(result.total / query.limit),
       },
     };
   }
@@ -351,14 +331,6 @@ class ProductService {
 
       imported = result.count;
     }
-
-    /*
-     * -------------------------
-     * DELETE TEMP FILE
-     * -------------------------
-     */
-
-    await fs.unlink(filePath);
 
     /*
      * -------------------------

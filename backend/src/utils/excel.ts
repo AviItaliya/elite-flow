@@ -1,5 +1,5 @@
 import ExcelJS from "exceljs";
-import path from "path";
+import AppError from "./AppError.js";
 
 export async function generateProductExcel(products: any[]) {
   const workbook = new ExcelJS.Workbook();
@@ -137,10 +137,14 @@ export async function generateProductExcel(products: any[]) {
 
 export async function readExcel(filePath: string) {
   const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.readFile(filePath);
+  try {
+    await workbook.xlsx.readFile(filePath);
+  } catch {
+    throw new AppError("The uploaded file is not a valid .xlsx Excel workbook.", 400);
+  }
   const worksheet = workbook.getWorksheet(1);
   if (!worksheet) {
-    throw new Error("Worksheet not found.");
+    throw new AppError("The Excel workbook does not contain a worksheet.", 400);
   }
   const rows: any[] = [];
   worksheet.eachRow((row, rowNumber) => {
@@ -190,7 +194,6 @@ export async function generateProductTemplate() {
 
 export async function saveProductExcel(products: any[]) {
   const workbook = await generateProductExcel(products);
-  const filePath = path.join("reports", `weekly-report-${Date.now()}.xlsx`);
-  await workbook.xlsx.writeFile(filePath);
-  return filePath;
+  const buffer = await workbook.xlsx.writeBuffer();
+  return Buffer.from(buffer);
 }

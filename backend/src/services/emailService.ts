@@ -7,7 +7,7 @@ import supplierRepository from "../repositories/supplierRepository.js";
 import { saveProductExcel } from "../utils/excel.js";
 import { sendEmail } from "../utils/sendEmail.js";
 
-import fs from "fs/promises";
+// import fs from "fs/promises";
 
 class EmailService {
   private getAdminEmail(): string {
@@ -1004,9 +1004,10 @@ class EmailService {
 
   const products = await productRepository.exportProducts();
 
-  const filePath = await saveProductExcel(products);
+  // const filePath = await saveProductExcel(products);
+  const fileBuffer = await saveProductExcel(products);
 
-  try {
+  // try {
     await transporter.sendMail({
       from: process.env.MAIL_FROM,
       to,
@@ -1265,14 +1266,99 @@ class EmailService {
       attachments: [
         {
           filename: "Weekly-Inventory-Report.xlsx",
-          path: filePath,
+          content: fileBuffer,
+          // path: filePath,
         },
       ],
     });
-  } finally {
-    await fs.unlink(filePath).catch(() => {});
+  } 
+  // finally {
+  //   await fs.unlink(filePath).catch(() => {});
+  // }
+  
+  
+  async sendResetPasswordEmail(
+    to: string,
+    name: string,
+    token: string,
+  ): Promise<void> {
+    const frontendUrl = process.env.FRONTEND_URL;
+
+    if (!frontendUrl) {
+      throw new Error("FRONTEND_URL is not configured.");
+    }
+
+    const resetUrl = new URL("/reset-password", frontendUrl);
+    resetUrl.searchParams.set("token", token);
+
+    // Escape user-provided text before inserting it into HTML.
+    const safeName = name.replace(/[&<>"']/g, (character) => {
+      const entities: Record<string, string> = {
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      };
+
+      return entities[character] ?? character;
+    });
+
+    await sendEmail({
+      to,
+      subject: "Reset Your Elite Inventory Password",
+      html: `
+        <!DOCTYPE html>
+        <html lang="en">
+          <head>
+            <meta charset="UTF-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+            <title>Password Reset</title>
+          </head>
+          <body style="font-family: Arial, sans-serif; color: #1f2937; padding: 24px;">
+            <div style="max-width: 560px; margin: 0 auto;">
+              <h2>Reset your password</h2>
+
+              <p>Hello ${safeName},</p>
+
+              <p>
+                We received a request to reset your Elite Inventory password.
+                Click the button below to choose a new password.
+              </p>
+
+              <p style="margin: 28px 0;">
+                <a
+                  href="${resetUrl.toString()}"
+                  style="
+                    display: inline-block;
+                    padding: 12px 20px;
+                    background: #2563eb;
+                    color: #ffffff;
+                    text-decoration: none;
+                    border-radius: 6px;
+                  "
+                >
+                  Reset Password
+                </a>
+              </p>
+
+              <p>This link expires in 10 minutes.</p>
+
+              <p>
+                If you did not request this change, you can ignore this email.
+              </p>
+
+              <p style="color: #6b7280; font-size: 12px;">
+                Elite Inventory
+              </p>
+            </div>
+          </body>
+        </html>
+      `,
+    });
   }
+
 }
-}
+// }
 
 export default new EmailService();
