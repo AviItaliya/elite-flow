@@ -86,42 +86,56 @@ class AuthService {
   // ============================================================
   // REFRESH ACCESS TOKEN
   // ============================================================
-
+  
   async refreshAccessToken(refreshToken: string) {
     const storedToken = await authRepository.findRefreshToken(refreshToken);
-
     if (!storedToken) {
       throw new AppError("Invalid refresh token", 401);
     }
-
-    const payload = verifyRefreshToken(refreshToken);
-
-    // Check the latest user status from database.
-    const user = await authRepository.findUserById(payload.id);
-
-    if (!user) {
-      throw new AppError("User not found", 404);
-    }
-
-    // IMPORTANT:
-    // An inactive user cannot get a new access token.
-    if (!user.isActive) {
+    if (storedToken.expiresAt <= new Date()) {
       await authRepository.deleteRefreshToken(refreshToken);
-
-      throw new AppError(
-        "Your account has been deactivated. Please contact an administrator.",
-        403,
-      );
+      throw new AppError("Refresh token has expired", 401);
     }
-
+    let payload;
+    try {
+      payload = verifyRefreshToken(refreshToken);
+    } catch {
+      await authRepository.deleteRefreshToken(refreshToken);
+      throw new AppError("Invalid or expired refresh token", 401);
+    }
+    if (payload.id !== storedToken.userId) {
+      await authRepository.deleteRefreshToken(refreshToken);
+      throw new AppError("Invalid refresh token", 401);
+    }
+    const user = await authRepository.findUserById(payload.id);
+    if (!user) {
+      await authRepository.deleteRefreshToken(refreshToken);
+      throw new AppError("User not found", 401);
+    }
+    if (!user.isActive) {
+      await authRepository.deleteAllRefreshToken(user.id);
+      throw new AppError("Your account has been deactivated. Please contact an administrator.", 403);
+    }
     const accessToken = generateAccessToken({
       id: user.id,
       email: user.email,
       role: user.role,
     });
-
+    const newRefreshToken = generateRefreshToken({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+    });
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    await authRepository.rotateRefreshToken(
+      refreshToken,
+      user.id,
+      newRefreshToken,
+      expiresAt,
+    );
     return {
       accessToken,
+      refreshToken: newRefreshToken,
     };
   }
 

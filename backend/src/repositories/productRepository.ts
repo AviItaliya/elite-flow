@@ -20,7 +20,14 @@ class ProductRepository {
     stockStatus?: "in-stock" | "low-stock" | "out-of-stock";
     page: number;
     limit: number;
-    sortBy: string;
+    sortBy:
+      | "name"
+      | "sku"
+      | "price"
+      | "quantity"
+      | "minStock"
+      | "createdAt"
+      | "updatedAt";
     order: "asc" | "desc";
   }) {
     const {
