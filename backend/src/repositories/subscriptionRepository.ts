@@ -32,26 +32,15 @@ export const findCompanySubscription = async (companyId: string) => {
   return prisma.subscription.findFirst({
     where: {
       companyId,
-      status: {
-        in: ["TRIAL", "ACTIVE"],
-      },
-      endDate: {
-        gt: new Date(),
-      },
+      status: {in: ["TRIAL", "ACTIVE"]},
+      startDate: {lte: new Date()},
+      endDate: {gt: new Date()},
     },
     include: {
       plan: true,
-      company: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-        },
-      },
+      company: {select: {id: true, name: true, email: true}},
     },
-    orderBy: {
-      createdAt: "desc",
-    },
+    orderBy: {startDate: "desc"},
   });
 };
 
@@ -164,3 +153,36 @@ export const expireCompanySubscriptions = async () => {
     },
   });
 };
+
+export const createPaidSubscription = async (data: {
+  companyId: string;
+  planId: string;
+  startDate: Date;
+  endDate: Date;
+}) => {
+  return prisma.subscription.create({
+    data: {
+      companyId: data.companyId,
+      planId: data.planId,
+      status: "ACTIVE",
+      startDate: data.startDate,
+      endDate: data.endDate,
+    },
+  });
+};
+
+export const findCompanySubscriptionById = async (
+  subscriptionId: string,
+  companyId: string
+) =>
+  prisma.subscription.findFirst({
+    where: {
+      id: subscriptionId,
+      companyId,
+      status: { in: ["TRIAL", "ACTIVE"] },
+    },
+    include: {
+      plan: true,
+      company: { select: { id: true, name: true, email: true } },
+    },
+  });

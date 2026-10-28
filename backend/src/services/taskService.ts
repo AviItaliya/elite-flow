@@ -1,9 +1,11 @@
 import {createTask, deleteTask, findTaskById, findTasksByProject, updateTask, updateTaskStatus} from "../repositories/taskRepository.js";
 import {findProjectByIdAndCompany, findProjectMember} from "../repositories/projectRepository.js";
-import { findUserByIdAndCompany } from "../repositories/userRepository.js";
+import { findUserByIdAndCompany, findUsersByCompany } from "../repositories/userRepository.js";
 import type {CreateTaskInput, UpdateTaskInput, UpdateTaskStatusInput} from "../validators/taskValidator.js";
 import {createTaskHistory, findTaskHistory} from "../repositories/taskHistoryRepository.js";
 import { requireActiveSubscription } from "./subscriptionService.js";
+import { NotificationType } from "../generated/prisma/client.js";
+import { createNotification } from "./notificationService.js";
 
 // Get all tasks of a project
 export const getProjectTasks = async (projectId: string, companyId: string) => {
@@ -71,6 +73,19 @@ export const createProjectTask = async (companyId: string, createdBy: string, da
     userId: createdBy,
     action: "TASK_CREATED",
   });
+  if(task.assignedTo && task.assignedTo !== createdBy) {
+    try {
+      await createNotification({
+        userId: task.assignedTo,
+        type: NotificationType.TASK_ASSIGNED,
+        title: "New Task Assigned",
+        message: `You have been assigned a new task: ${task.title}`,
+        link: `/tasks/${task.id}`
+      });
+    } catch (error) {
+      console.error("Failed to create task assignment notification:", error);
+    }
+  }
   return task;
 };
 
@@ -122,15 +137,30 @@ export const updateCompanyTask = async (
   }
 
   // Track assignee changes
-  if (data.assignedTo !== undefined && data.assignedTo !== task.assignedTo) {
-    await createTaskHistory({
-      taskId,
-      userId,
-      action: "ASSIGNEE_CHANGED",
-      oldValue: task.assignedTo ?? "UNASSIGNED",
-      newValue: data.assignedTo ?? "UNASSIGNED",
-    });
+if (data.assignedTo !== undefined && data.assignedTo !== task.assignedTo) {
+  await createTaskHistory({
+    taskId,
+    userId,
+    action: "ASSIGNEE_CHANGED",
+    oldValue: task.assignedTo ?? "UNASSIGNED",
+    newValue: data.assignedTo ?? "UNASSIGNED",
+  });
+
+  // Notify the new assignee
+  if (data.assignedTo && data.assignedTo !== userId) {
+    try {
+      await createNotification({
+        userId: data.assignedTo,
+        type: NotificationType.TASK_ASSIGNED,
+        title: "Task Assigned to You",
+        message: `You have been assigned the task: ${updatedTask.title}`,
+        link: `/tasks/${updatedTask.id}`,
+      });
+    } catch (error) {
+      console.error("Failed to create task reassignment notification:", error);
+    }
   }
+}
 
   // Track title changes
   if (data.title !== undefined && data.title !== task.title) {
@@ -153,10 +183,7 @@ export const changeTaskStatus = async (
   data: UpdateTaskStatusInput
 ) => {
   const task = await findTaskById(taskId);
-  if (!task) {
-    throw new Error("Task not found");
-  }
-  if (task.project.companyId !== companyId) {
+  if (!task || task.project.companyId !== companyId) {
     throw new Error("Task not found");
   }
   if (task.status === data.status) {
@@ -170,6 +197,22 @@ export const changeTaskStatus = async (
     oldValue: task.status,
     newValue: data.status,
   });
+  try {
+    const updatedBy = await findUserByIdAndCompany(userId, companyId);
+    const companyUsers = await findUsersByCompany(companyId);
+    const admins = companyUsers.filter((user) => user.role === "ADMIN" && user.status === "ACTIVE" && user.id !== userId);
+    for(const admin of admins) {
+      await createNotification({
+        userId: admin.id,
+        type: NotificationType.TASK_STATUS_CHANGED,
+        title: "Task status updated",
+        message: `${updatedBy?.name ?? "A user"} updated the status of task "${updatedTask.title}" from ${task.status} to ${updatedTask.status}.`,
+        link: `/tasks/${updatedTask.id}`,
+      });
+    }
+  } catch (error) {
+      console.error("Failed to create task status change notification:", error);
+  }
   return updatedTask;
 };
 

@@ -12,6 +12,10 @@ import dashboardRoutes from "./routes/dashboardRoutes.js";
 import superadminRoutes from "./routes/superadminRoutes.js";
 import planRoutes from "./routes/planRoutes.js";
 import subscriptionRoutes from "./routes/subscriptionRoutes.js";
+import paymentRoutes from "./routes/paymentRoutes.js";
+import { stripeWebhookController } from "./controllers/stripeWebhookController.js";
+import renewalRoutes from "./routes/renewalRoutes.js";
+import notificationRoutes from "./routes/notificationRoutes.js";
 
 const app = express();
 
@@ -24,6 +28,8 @@ app.use(
     credentials: true,
   })
 );
+
+app.post("/api/payments/webhook", express.raw({ type: "application/json" }), stripeWebhookController);
 
 app.use(express.json({limit: "10kb"}));
 app.use(express.urlencoded({extended: true, limit: "10kb"}));
@@ -43,8 +49,11 @@ app.use("/api/companies", companyRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use("/api/comments", commentRoutes);
+app.use("/api/notifications", notificationRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/plans", planRoutes);
 app.use("/api/subscriptions", subscriptionRoutes);
+app.use("/api/payments", paymentRoutes);
+app.use("/api/renewals", renewalRoutes);
 
 export default app;

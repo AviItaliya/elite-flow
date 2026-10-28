@@ -1,36 +1,23 @@
-import nodemailer from "nodemailer";
-import { mailConfig } from "../config/mail.js";
 
-if (
-  !mailConfig.host ||
-  !mailConfig.user ||
-  !mailConfig.password ||
-  !mailConfig.from
-) {
-  throw new Error("SMTP configuration is incomplete");
-}
+import {emailFrom, transporter} from "../config/email.js";
 
-const transporter = nodemailer.createTransport({
-  host: mailConfig.host,
-  port: mailConfig.port,
-  secure: mailConfig.port === 465,
-  auth: {
-    user: mailConfig.user,
-    pass: mailConfig.password,
-  },
-});
+type SendEmailInput = {
+  to: string;
+  subject: string;
+  html: string;
+};
 
 export const sendEmail = async ({
   to,
   subject,
   html,
-}: {
-  to: string;
-  subject: string;
-  html: string;
-}) => {
-  await transporter.sendMail({
-    from: mailConfig.from,
+}: SendEmailInput) => {
+  if (!to || !subject || !html) {
+    throw new Error("Recipient, subject, and email HTML are required");
+  }
+
+  return transporter.sendMail({
+    from: emailFrom,
     to,
     subject,
     html,

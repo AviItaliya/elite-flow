@@ -194,3 +194,17 @@ export const invalidateLoginOtp = async (otpId: string) => {
     },
   });
 };
+
+export const findLatestEmailVerificationToken = async (
+  userId: string
+) => {
+  return prisma.emailVerificationToken.findFirst({
+    where: {
+      userId,
+      usedAt: null,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+};

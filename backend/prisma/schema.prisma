@@ -47,6 +47,39 @@ enum SubscriptionStatus {
   TRIAL
 }
 
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  EXPIRED
+  REFUNDED
+  REVIEW_REQUIRED
+}
+
+enum PaymentPurpose {
+  NEW_SUBSCRIPTION
+  RENEWAL
+}
+
+enum ReminderType {
+  SEVEN_DAYS
+  THREE_DAYS
+  ONE_DAY
+}
+
+enum ReminderStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum NotificationType {
+  TASK_ASSIGNED
+  TASK_COMMENTED
+  TASK_STATUS_CHANGED
+  SYSTEM
+}
+
 model Company {
   id            String         @id @default(uuid())
   name          String
@@ -54,9 +87,12 @@ model Company {
   phone         String?
   address       String?
   isActive      Boolean        @default(true)
+  trialUsedAt   DateTime?
   users         User[]
   projects      Project[]
   subscriptions Subscription[]
+  payments      Payment[]
+  isSuspended   Boolean        @default(false)
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 }
@@ -81,6 +117,7 @@ model User {
   emailVerificationTokens EmailVerificationToken[]
   passwordResetTokens     PasswordResetToken[]
   loginOtps               LoginOtp[]
+  notifications           Notification[]
   createdAt               DateTime                 @default(now())
   updatedAt               DateTime                 @updatedAt
 }
@@ -171,21 +208,28 @@ model Plan {
   maxProjects   Int
   isActive      Boolean        @default(true)
   subscriptions Subscription[]
+  payments      Payment[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 }
 
 model Subscription {
-  id        String             @id @default(uuid())
-  companyId String
-  planId    String
-  status    SubscriptionStatus @default(TRIAL)
-  startDate DateTime
-  endDate   DateTime
-  company   Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  plan      Plan               @relation(fields: [planId], references: [id], onDelete: Restrict)
-  createdAt DateTime           @default(now())
-  updatedAt DateTime           @updatedAt
+  id                        String                 @id @default(uuid())
+  companyId                 String
+  planId                    String
+  status                    SubscriptionStatus     @default(TRIAL)
+  startDate                 DateTime
+  endDate                   DateTime
+  company                   Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  plan                      Plan                   @relation(fields: [planId], references: [id], onDelete: Restrict)
+  payments                  Payment[]
+  renewalPayments           Payment[]              @relation("RenewalForSubscription")
+  renewedFromSubscriptionId String?                @unique
+  renewedFromSubscription   Subscription?          @relation("SubscriptionRenewalChain", fields: [renewedFromSubscriptionId], references: [id], onDelete: SetNull)
+  nextSubscription          Subscription?          @relation("SubscriptionRenewalChain")
+  reminders                 SubscriptionReminder[]
+  createdAt                 DateTime               @default(now())
+  updatedAt                 DateTime               @updatedAt
 
   @@index([companyId])
   @@index([planId])
@@ -244,4 +288,62 @@ model LoginOtp {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+model Payment {
+  id                       String         @id @default(uuid())
+  companyId                String
+  planId                   String
+  subscriptionId           String?
+  stripeCheckoutSessionId  String         @unique
+  stripePaymentIntentId    String?        @unique
+  amount                   Decimal        @db.Decimal(10, 2)
+  currency                 String         @default("inr")
+  status                   PaymentStatus  @default(PENDING)
+  paidAt                   DateTime?
+  company                  Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  plan                     Plan           @relation(fields: [planId], references: [id], onDelete: Restrict)
+  subscription             Subscription?  @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  purpose                  PaymentPurpose @default(NEW_SUBSCRIPTION)
+  renewalForSubscriptionId String?
+  renewalForSubscription   Subscription?  @relation("RenewalForSubscription", fields: [renewalForSubscriptionId], references: [id], onDelete: SetNull)
+  createdAt                DateTime       @default(now())
+  updatedAt                DateTime       @updatedAt
+
+  @@index([companyId])
+  @@index([planId])
+  @@index([subscriptionId])
+  @@index([status])
+  @@index([renewalForSubscriptionId])
+}
+
+model SubscriptionReminder {
+  id             String         @id @default(uuid())
+  subscriptionId String
+  type           ReminderType
+  status         ReminderStatus @default(PENDING)
+  sentAt         DateTime?
+  lastError      String?
+  claimedUntil   DateTime?
+  subscription   Subscription   @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@unique([subscriptionId, type])
+  @@index([status])
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  type      NotificationType
+  title     String
+  message   String
+  link      String?
+  readAt    DateTime?
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime         @default(now())
+
+  @@index([userId, readAt, createdAt])
+  @@index([createdAt])
 }
