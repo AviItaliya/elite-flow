@@ -10,7 +10,7 @@ taskRoutes.post("/", authenticate, authorize("ADMIN", "USER", "SUPERADMIN"), cre
 taskRoutes.get("/:id/history", authenticate, authorize("ADMIN", "USER", "SUPERADMIN"), getTaskHistoryController);
 taskRoutes.get("/:id", authenticate, authorize("ADMIN", "USER", "SUPERADMIN"), getTaskById);
 taskRoutes.put("/:id", authenticate, authorize("ADMIN", "USER", "SUPERADMIN"), updateTaskController);
-taskRoutes.patch("/:id/status", authenticate, authorize("ADMIN", "USER", "SUPERADMIN"), updateTaskStatusController);
 taskRoutes.delete("/:id", authenticate, authorize("ADMIN", "SUPERADMIN"), deleteTaskController);
+taskRoutes.patch("/:id/status", authenticate, authorize("ADMIN", "USER", "SUPERADMIN"), updateTaskStatusController);
 
 export default taskRoutes;

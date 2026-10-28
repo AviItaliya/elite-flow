@@ -16,6 +16,7 @@ import paymentRoutes from "./routes/paymentRoutes.js";
 import { stripeWebhookController } from "./controllers/stripeWebhookController.js";
 import renewalRoutes from "./routes/renewalRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
+import auditLogRoutes from "./routes/auditLogRoutes.js";
 
 const app = express();
 
@@ -55,5 +56,6 @@ app.use("/api/plans", planRoutes);
 app.use("/api/subscriptions", subscriptionRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/renewals", renewalRoutes);
+app.use("/api/audit-logs", auditLogRoutes);
 
 export default app;

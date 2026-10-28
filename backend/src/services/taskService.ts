@@ -1,11 +1,53 @@
-import {createTask, deleteTask, findTaskById, findTasksByProject, updateTask, updateTaskStatus} from "../repositories/taskRepository.js";
-import {findProjectByIdAndCompany, findProjectMember} from "../repositories/projectRepository.js";
-import { findUserByIdAndCompany, findUsersByCompany } from "../repositories/userRepository.js";
-import type {CreateTaskInput, UpdateTaskInput, UpdateTaskStatusInput} from "../validators/taskValidator.js";
-import {createTaskHistory, findTaskHistory} from "../repositories/taskHistoryRepository.js";
+import {
+  createTask,
+  deleteTask,
+  findTaskById,
+  findTasksByProject,
+  updateTask,
+  updateTaskStatus,
+} from "../repositories/taskRepository.js";
+import {
+  findProjectByIdAndCompany,
+  findProjectMember,
+} from "../repositories/projectRepository.js";
+import {
+  findUserByIdAndCompany,
+  findUsersByCompany,
+} from "../repositories/userRepository.js";
+import type {
+  CreateTaskInput,
+  UpdateTaskInput,
+  UpdateTaskStatusInput,
+} from "../validators/taskValidator.js";
+import {
+  createTaskHistory,
+  findTaskHistory,
+} from "../repositories/taskHistoryRepository.js";
 import { requireActiveSubscription } from "./subscriptionService.js";
 import { NotificationType } from "../generated/prisma/client.js";
 import { createNotification } from "./notificationService.js";
+import { logAuditEvent } from "./auditLogService.js";
+
+const recordTaskAudit = async (
+  actorId: string,
+  companyId: string,
+  action: string,
+  taskId: string,
+  details?: Record<string, unknown>,
+) => {
+  try {
+    await logAuditEvent({
+      actorId,
+      companyId,
+      action,
+      entity: "TASK",
+      entityId: taskId,
+      details: details ?? null,
+    });
+  } catch (error) {
+    console.error(`Failed to record ${action} audit log:`, error);
+  }
+};
 
 // Get all tasks of a project
 export const getProjectTasks = async (projectId: string, companyId: string) => {
@@ -22,14 +64,18 @@ export const getCompanyTaskById = async (taskId: string, companyId: string) => {
   if (!task) {
     throw new Error("Task not found");
   }
-if (task.project.companyId !== companyId) {
+  if (task.project.companyId !== companyId) {
     throw new Error("Task not found");
   }
-return task;
+  return task;
 };
 
 // Create task
-export const createProjectTask = async (companyId: string, createdBy: string, data: CreateTaskInput) => {
+export const createProjectTask = async (
+  companyId: string,
+  createdBy: string,
+  data: CreateTaskInput,
+) => {
   // Check project
   const project = await findProjectByIdAndCompany(data.projectId, companyId);
   if (!project) {
@@ -73,14 +119,19 @@ export const createProjectTask = async (companyId: string, createdBy: string, da
     userId: createdBy,
     action: "TASK_CREATED",
   });
-  if(task.assignedTo && task.assignedTo !== createdBy) {
+  await recordTaskAudit(createdBy, companyId, "TASK_CREATED", task.id, {
+    projectId: task.projectId,
+    title: task.title,
+    assignedTo: task.assignedTo,
+  });
+  if (task.assignedTo && task.assignedTo !== createdBy) {
     try {
       await createNotification({
         userId: task.assignedTo,
         type: NotificationType.TASK_ASSIGNED,
         title: "New Task Assigned",
         message: `You have been assigned a new task: ${task.title}`,
-        link: `/tasks/${task.id}`
+        link: `/tasks/${task.id}`,
       });
     } catch (error) {
       console.error("Failed to create task assignment notification:", error);
@@ -94,7 +145,7 @@ export const updateCompanyTask = async (
   taskId: string,
   companyId: string,
   userId: string,
-  data: UpdateTaskInput
+  data: UpdateTaskInput,
 ) => {
   const task = await findTaskById(taskId);
   if (!task) {
@@ -124,6 +175,9 @@ export const updateCompanyTask = async (
     }
   }
   const updatedTask = await updateTask(taskId, data);
+  await recordTaskAudit(userId, companyId, "TASK_UPDATED", taskId, {
+    changedFields: Object.keys(data),
+  });
 
   // Track priority changes
   if (data.priority !== undefined && data.priority !== task.priority) {
@@ -137,30 +191,37 @@ export const updateCompanyTask = async (
   }
 
   // Track assignee changes
-if (data.assignedTo !== undefined && data.assignedTo !== task.assignedTo) {
-  await createTaskHistory({
-    taskId,
-    userId,
-    action: "ASSIGNEE_CHANGED",
-    oldValue: task.assignedTo ?? "UNASSIGNED",
-    newValue: data.assignedTo ?? "UNASSIGNED",
-  });
+  if (data.assignedTo !== undefined && data.assignedTo !== task.assignedTo) {
+    await createTaskHistory({
+      taskId,
+      userId,
+      action: "ASSIGNEE_CHANGED",
+      oldValue: task.assignedTo ?? "UNASSIGNED",
+      newValue: data.assignedTo ?? "UNASSIGNED",
+    });
+    await recordTaskAudit(userId, companyId, "TASK_ASSIGNED", taskId, {
+      previousAssignee: task.assignedTo,
+      newAssignee: data.assignedTo,
+    });
 
-  // Notify the new assignee
-  if (data.assignedTo && data.assignedTo !== userId) {
-    try {
-      await createNotification({
-        userId: data.assignedTo,
-        type: NotificationType.TASK_ASSIGNED,
-        title: "Task Assigned to You",
-        message: `You have been assigned the task: ${updatedTask.title}`,
-        link: `/tasks/${updatedTask.id}`,
-      });
-    } catch (error) {
-      console.error("Failed to create task reassignment notification:", error);
+    // Notify the new assignee
+    if (data.assignedTo && data.assignedTo !== userId) {
+      try {
+        await createNotification({
+          userId: data.assignedTo,
+          type: NotificationType.TASK_ASSIGNED,
+          title: "Task Assigned to You",
+          message: `You have been assigned the task: ${updatedTask.title}`,
+          link: `/tasks/${updatedTask.id}`,
+        });
+      } catch (error) {
+        console.error(
+          "Failed to create task reassignment notification:",
+          error,
+        );
+      }
     }
   }
-}
 
   // Track title changes
   if (data.title !== undefined && data.title !== task.title) {
@@ -180,7 +241,7 @@ export const changeTaskStatus = async (
   taskId: string,
   companyId: string,
   userId: string,
-  data: UpdateTaskStatusInput
+  data: UpdateTaskStatusInput,
 ) => {
   const task = await findTaskById(taskId);
   if (!task || task.project.companyId !== companyId) {
@@ -197,11 +258,18 @@ export const changeTaskStatus = async (
     oldValue: task.status,
     newValue: data.status,
   });
+  await recordTaskAudit(userId, companyId, "TASK_STATUS_CHANGED", taskId, {
+    previousStatus: task.status,
+    newStatus: updatedTask.status,
+  });
   try {
     const updatedBy = await findUserByIdAndCompany(userId, companyId);
     const companyUsers = await findUsersByCompany(companyId);
-    const admins = companyUsers.filter((user) => user.role === "ADMIN" && user.status === "ACTIVE" && user.id !== userId);
-    for(const admin of admins) {
+    const admins = companyUsers.filter(
+      (user) =>
+        user.role === "ADMIN" && user.status === "ACTIVE" && user.id !== userId,
+    );
+    for (const admin of admins) {
       await createNotification({
         userId: admin.id,
         type: NotificationType.TASK_STATUS_CHANGED,
@@ -211,13 +279,13 @@ export const changeTaskStatus = async (
       });
     }
   } catch (error) {
-      console.error("Failed to create task status change notification:", error);
+    console.error("Failed to create task status change notification:", error);
   }
   return updatedTask;
 };
 
 // Delete task
-export const deleteCompanyTask = async (taskId: string, companyId: string) => {
+export const deleteCompanyTask = async (userId: string, taskId: string, companyId: string) => {
   const task = await findTaskById(taskId);
   if (!task) {
     throw new Error("Task not found");
@@ -225,11 +293,21 @@ export const deleteCompanyTask = async (taskId: string, companyId: string) => {
   if (task.project.companyId !== companyId) {
     throw new Error("Task not found");
   }
-  return deleteTask(taskId);
+  const deletedTask = await deleteTask(taskId);
+
+  await recordTaskAudit(userId, companyId, "TASK_DELETED", taskId, {
+    title: task.title,
+    projectId: task.projectId,
+  });
+
+  return deletedTask;
 };
 
 // Get task history
-export const getCompanyTaskHistory = async (taskId: string, companyId: string) => {
+export const getCompanyTaskHistory = async (
+  taskId: string,
+  companyId: string,
+) => {
   const task = await findTaskById(taskId);
   if (!task) {
     throw new Error("Task not found");

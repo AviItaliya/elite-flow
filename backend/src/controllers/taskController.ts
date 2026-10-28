@@ -130,7 +130,14 @@ export const deleteTaskController = async (req: AuthenticatedRequest, res: Respo
   try {
     const companyId = getRequiredCompanyId(req);
     const taskId = getParamId(req);
-    await deleteCompanyTask(taskId, companyId);
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      });
+    }
+    await deleteCompanyTask(user.userId, taskId, companyId);
     return res.status(200).json({
       success: true,
       message: "Task deleted successfully",
