@@ -147,3 +147,57 @@ export const findPendingRenewalPayment = async (renewalForSubscriptionId: string
       createdAt: "desc",
     },
   });
+
+  export const markPendingPaymentReviewRequired = async (paymentId: string, paymentIntentId?: string) => {
+  return prisma.payment.updateMany({
+    where: {
+      id: paymentId,
+      status: "PENDING",
+    },
+    data: {
+      status: "REVIEW_REQUIRED",
+      ...(paymentIntentId && {
+        stripePaymentIntentId: paymentIntentId,
+      }),
+    },
+  });
+};
+
+export const findReviewRequiredPaymentById = async (paymentId: string) => {
+  return prisma.payment.findFirst({
+    where: {
+      id: paymentId,
+      status: "REVIEW_REQUIRED",
+    },
+    include: {
+      company: true,
+      plan: true,
+      subscription: true,
+    },
+  });
+};
+
+export const claimReviewRequiredPayment = async (paymentId: string) => {
+  return prisma.payment.updateMany({
+    where: {
+      id: paymentId,
+      status: "REVIEW_REQUIRED",
+    },
+    data: {
+      status: "PENDING",
+    },
+  });
+};
+
+export const findPaymentById = async (paymentId: string) => {
+  return prisma.payment.findUnique({
+    where: {
+      id: paymentId,
+    },
+    include: {
+      company: true,
+      plan: true,
+      subscription: true,
+    },
+  });
+};

@@ -1,25 +1,53 @@
 import { prisma } from "../config/database.js";
 import {createSubscription, findCompanySubscription, findPlanByIdForSubscription, findCompanySubscriptions, updateSubscriptionPlan,
   cancelSubscription, expireCompanySubscriptions, findCompanySubscriptionById} from "../repositories/subscriptionRepository.js";
-  
+
 export const createCompanySubscription = async (companyId: string, planId: string) => {
-  const existingSubscription = await findCompanySubscription(companyId);
-  if (existingSubscription) {
-    throw new Error("Company already has an active subscription");
-  }
   const plan = await findPlanByIdForSubscription(planId);
   if (!plan) {
     throw new Error("Plan not found or inactive");
   }
-  const startDate = new Date();
-  const endDate = new Date(startDate);
-  endDate.setDate(endDate.getDate() + plan.durationDays);
-  return createSubscription({
-    companyId,
-    planId: plan.id,
-    status: "TRIAL",
-    startDate,
-    endDate,
+  if (Number(plan.price) !== 0) {
+    throw new Error("Paid plans require Stripe Checkout");
+  }
+  return prisma.$transaction(async (tx) => {
+    const existingSubscription = await tx.subscription.findFirst({
+      where: {
+        companyId,
+        status: {
+          in: ["ACTIVE", "TRIAL"],
+        },
+        OR: [
+          { endDate: null },
+          { endDate: { gt: new Date() } },
+        ],
+      },
+    });
+    if (existingSubscription) {
+      throw new Error("Company already has an active subscription");
+    }
+    const subscription = await tx.subscription.create({
+      data: {
+        companyId,
+        planId: plan.id,
+        status: "ACTIVE",
+        startDate: new Date(),
+        endDate: null,
+      },
+      include: {
+        plan: true,
+      },
+    });
+    await tx.company.updateMany({
+      where: {
+        id: companyId,
+        isSuspended: false,
+      },
+      data: {
+        isActive: true,
+      },
+    });
+    return subscription;
   });
 };
 
@@ -68,7 +96,7 @@ export const requireActiveSubscription = async (companyId: string) => {
   if (!subscription) {
     throw new Error("Your company does not have an active subscription");
   }
-  if (subscription.endDate <= new Date()) {
+  if (subscription.endDate && subscription.endDate <= new Date()) {
     throw new Error("Your company subscription has expired");
   }
   return subscription;
@@ -76,29 +104,60 @@ export const requireActiveSubscription = async (companyId: string) => {
 
 export const expireSubscriptions = async () => {
   const now = new Date();
+
   await prisma.$transaction(async (tx) => {
+    // 1. Expire only subscriptions that have an actual end date.
     await tx.subscription.updateMany({
-      where: { status: { in: ["ACTIVE", "TRIAL"] }, endDate: { lte: now } },
-      data: { status: "EXPIRED" },
+      where: {
+        status: { in: ["ACTIVE", "TRIAL"] },
+        endDate: {
+          not: null,
+          lte: now,
+        },
+      },
+      data: {
+        status: "EXPIRED",
+      },
     });
+
+    // 2. Check active companies.
     const companies = await tx.company.findMany({
-      where: { isActive: true },
-      select: { id: true },
+      where: {
+        isActive: true,
+        isSuspended: false,
+      },
+      select: {
+        id: true,
+      },
     });
+
     for (const company of companies) {
+      // 3. A permanent subscription (endDate: null) is also valid.
       const validSubscription = await tx.subscription.findFirst({
         where: {
           companyId: company.id,
           status: { in: ["ACTIVE", "TRIAL"] },
           startDate: { lte: now },
-          endDate: { gt: now },
+          OR: [
+            { endDate: null },
+            { endDate: { gt: now } },
+          ],
         },
-        select: { id: true },
+        select: {
+          id: true,
+        },
       });
+
+      // 4. Deactivate only companies without a valid subscription.
       if (!validSubscription) {
         await tx.company.updateMany({
-          where: { id: company.id, isSuspended: false },
-          data: { isActive: false },
+          where: {
+            id: company.id,
+            isSuspended: false,
+          },
+          data: {
+            isActive: false,
+          },
         });
       }
     }
@@ -115,6 +174,14 @@ export const getSubscriptionRenewalEligibility = async (
   );
   if (!subscription) {
     throw new Error("Subscription not found for this company");
+  }
+  if (!subscription.endDate) {
+    return {
+      eligible: false,
+      reason: "This subscription is not currently active",
+      subscription,
+      renewalOpensAt: null,
+    };
   }
   const now = new Date();
   const renewalOpensAt = new Date(subscription.endDate);

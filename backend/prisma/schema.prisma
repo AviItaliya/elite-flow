@@ -224,7 +224,7 @@ model Subscription {
   planId                    String
   status                    SubscriptionStatus     @default(TRIAL)
   startDate                 DateTime
-  endDate                   DateTime
+  endDate                   DateTime?
   company                   Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
   plan                      Plan                   @relation(fields: [planId], references: [id], onDelete: Restrict)
   payments                  Payment[]

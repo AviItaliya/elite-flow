@@ -32,6 +32,8 @@ const runSubscriptionReminderJob = async () => {
         continue;
       }
 
+      if (!subscription.endDate) continue;
+
       const existing = await prisma.subscriptionReminder.findUnique({
         where: {
           subscriptionId_type: {

@@ -29,18 +29,34 @@ export const createSubscription = async (data: {
 };
 
 export const findCompanySubscription = async (companyId: string) => {
+  const now = new Date();
   return prisma.subscription.findFirst({
     where: {
       companyId,
-      status: {in: ["TRIAL", "ACTIVE"]},
-      startDate: {lte: new Date()},
-      endDate: {gt: new Date()},
+      status: {
+        in: ["TRIAL", "ACTIVE"],
+      },
+      startDate: {
+        lte: now,
+      },
+      OR: [
+        { endDate: null },
+        { endDate: { gt: now } },
+      ],
     },
     include: {
       plan: true,
-      company: {select: {id: true, name: true, email: true}},
+      company: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
     },
-    orderBy: {startDate: "desc"},
+    orderBy: {
+      startDate: "desc",
+    },
   });
 };
 
