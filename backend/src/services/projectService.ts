@@ -1,10 +1,10 @@
-import {addProjectMember, countCompanyProjects, createProject, deleteProject, findProjectByIdAndCompany, findProjectMember, findProjectMembers, findProjectsByCompany, removeProjectMember, updateProject, updateProjectStatus} from "../repositories/projectRepository.js";
+import {addProjectMember, countCompanyProjects, createProject, deleteProject, findProjectByIdAndCompany, findProjectMember, findProjectMembers, findProjectsByCompany, ProjectListFilters, removeProjectMember, updateProject, updateProjectStatus} from "../repositories/projectRepository.js";
 import { findUserByIdAndCompany } from "../repositories/userRepository.js";
 import type {CreateProjectInput, UpdateProjectInput, UpdateProjectStatusInput} from "../validators/projectValidator.js";
 import { requireActiveSubscription } from "./subscriptionService.js";
 
-export const getCompanyProjects = async (companyId: string) => {
-  return findProjectsByCompany(companyId);
+export const getCompanyProjects = async (companyId: string, filters: ProjectListFilters) => {
+  return findProjectsByCompany(companyId, filters);
 };
 
 export const getCompanyProjectById = async (projectId: string, companyId: string) => {

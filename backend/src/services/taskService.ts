@@ -1,4 +1,4 @@
-import {createTask, deleteTask, findTaskById, findTasksByProject, updateTask, updateTaskStatus} from "../repositories/taskRepository.js";
+import {createTask, deleteTask, findTaskById, findTasksByProject, TaskListFilters, updateTask, updateTaskStatus} from "../repositories/taskRepository.js";
 import {findProjectByIdAndCompany, findProjectMember} from "../repositories/projectRepository.js";
 import {findUserByIdAndCompany, findUsersByCompany} from "../repositories/userRepository.js";
 import type {CreateTaskInput, UpdateTaskInput, UpdateTaskStatusInput} from "../validators/taskValidator.js";
@@ -67,12 +67,12 @@ const notifyTaskAssignee = async (
 };
 
 // Get all tasks belonging to a project.
-export const getProjectTasks = async (projectId: string, companyId: string) => {
+export const getProjectTasks = async (projectId: string, companyId: string, filters: TaskListFilters) => {
   const project = await findProjectByIdAndCompany(projectId, companyId);
   if (!project) {
     throw new Error("Project not found");
   }
-  return findTasksByProject(projectId);
+  return findTasksByProject(projectId, filters);
 };
 
 // Get a single task belonging to the authenticated user's company.
@@ -299,7 +299,14 @@ export const changeTaskStatus = async (
   // Notify active administrators of the status change.
   try {
     const updatedBy = await findUserByIdAndCompany(userId, companyId);
-    const companyUsers = await findUsersByCompany(companyId);
+    const { users: companyUsers } = await findUsersByCompany(companyId,
+  {
+    page: 1,
+    limit: 100,
+    sortBy: "createdAt",
+    sortOrder: "desc",
+  }
+);
 
     const admins = companyUsers.filter(
       (user) =>

@@ -1,31 +1,80 @@
 import { prisma } from "../config/database.js";
 
-export const findTasksByProject = async (projectId: string) => {
-  return prisma.task.findMany({
-    where: {
-      projectId,
-    },
-    include: {
-      assignee: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          role: true,
+type TaskStatus = "TODO" | "IN_PROGRESS" | "REVIEW" | "COMPLETED";
+type TaskPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+type TaskSortField = "createdAt" | "updatedAt" | "title" | "dueDate";
+type TaskSortOrder = "asc" | "desc";
+
+export interface TaskListFilters {
+  page: number;
+  limit: number;
+  search?: string;
+  status?: TaskStatus;
+  priority?: TaskPriority;
+  sortBy: TaskSortField;
+  sortOrder: TaskSortOrder;
+}
+
+export const findTasksByProject = async (projectId: string, filters: TaskListFilters) => {
+  const {page, limit, search, status, priority, sortBy, sortOrder} = filters;
+  const where = {
+    projectId,
+    ...(status ? { status } : {}),
+    ...(priority ? { priority } : {}),
+    ...(search
+      ? {
+          OR: [
+            {
+              title: {
+                contains: search,
+                mode: "insensitive" as const,
+              },
+            },
+            {
+              description: {
+                contains: search,
+                mode: "insensitive" as const,
+              },
+            },
+          ],
+        }
+      : {}),
+  };
+  const [tasks, total] = await prisma.$transaction([
+    prisma.task.findMany({
+      where,
+      include: {
+        assignee: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+          },
+        },
+        creator: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
         },
       },
-      creator: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-        },
-      },
+      orderBy: {[sortBy]: sortOrder},
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.task.count({where}),
+  ]);
+  return {
+    tasks,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
     },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
+  };
 };
 
 export const findTaskById = async (taskId: string) => {

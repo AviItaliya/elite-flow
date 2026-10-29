@@ -10,6 +10,16 @@ interface CreateNotificationInput {
     link?: string;
 }
 
+export type NotificationSortOrder = "asc" | "desc";
+export type NotificationReadFilter = "all" | "read" | "unread";
+
+export interface NotificationListFilters {
+  page: number;
+  limit: number;
+  readStatus: NotificationReadFilter;
+  sortOrder: NotificationSortOrder;
+}
+
 export const createNotification = async (input: CreateNotificationInput) => {
     const notification = await prisma.notification.create({
         data: {
@@ -28,34 +38,44 @@ export const createNotification = async (input: CreateNotificationInput) => {
     return notification;
 };
 
-export const getUserNotifications = async (userId: string, page = 1, limit = 20) => {
-    const safePage = Math.max(1, page);
-    const safeLimit = Math.min(100, Math.max(1, limit));
-    const [notifications, total, unreadCount] = await Promise.all([
-        prisma.notification.findMany({
-            where: {userId},
-            orderBy: {createdAt: "desc"},
-            skip: (safePage - 1) * safeLimit,
-            take: safeLimit,
-        }),
-        prisma.notification.count({
-            where: {userId},
-        }),
-        prisma.notification.count({
-            where: {userId, readAt: null},
-        }),
-    ]);
-
-    return {
-        notifications,
-        pagination: {
-            page: safePage,
-            limit: safeLimit,
-            total,
-            totalPages: Math.ceil(total / safeLimit),
-        },
-        unreadCount,
-    };
+export const getUserNotifications = async (userId: string, filters: NotificationListFilters) => {
+  const where = {
+    userId,
+    ...(filters.readStatus === "read"
+      ? { readAt: { not: null } }
+      : filters.readStatus === "unread"
+        ? { readAt: null }
+        : {}),
+  };
+  const skip = (filters.page - 1) * filters.limit;
+  const [notifications, total, unreadCount] = await prisma.$transaction([
+    prisma.notification.findMany({
+      where,
+      orderBy: [
+        { createdAt: filters.sortOrder },
+        { id: "asc" },
+      ],
+      skip,
+      take: filters.limit,
+    }),
+    prisma.notification.count({ where }),
+    prisma.notification.count({
+      where: {
+        userId,
+        readAt: null,
+      },
+    }),
+  ]);
+  return {
+    notifications,
+    pagination: {
+      page: filters.page,
+      limit: filters.limit,
+      total,
+      totalPages: Math.ceil(total / filters.limit),
+    },
+    unreadCount,
+  };
 };
 
 export const markNotificationAsRead = async (userId: string, notificationId: string) => {

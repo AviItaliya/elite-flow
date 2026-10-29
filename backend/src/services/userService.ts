@@ -1,5 +1,6 @@
 import {findUserById, findUserByIdAndCompany, findUsersByCompany, createUser as createUserRepository,  updateUser as updateUserRepository,
-  updateUserStatus as updateUserStatusRepository, softDeleteUser, clearUserProfileImage, updateUserProfileImage} from "../repositories/userRepository.js";
+  updateUserStatus as updateUserStatusRepository, softDeleteUser, clearUserProfileImage, updateUserProfileImage,
+  UserListFilters} from "../repositories/userRepository.js";
 import { hashPassword } from "../utils/password.js";
 import type {CreateUserInput, UpdateUserInput, UpdateUserStatusInput} from "../validators/userValidator.js";
 import {createEmailVerificationToken, findUserByEmail} from "../repositories/authRepository.js";
@@ -43,20 +44,8 @@ export const getCurrentUser = async (userId: string) => {
   };
 };
 
-export const getCompanyUsers = async (companyId: string) => {
-  const users = await findUsersByCompany(companyId);
-
-  return users.map((user) => ({
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-    status: user.status,
-    isVerified: user.isVerified,
-    companyId: user.companyId,
-    createdAt: user.createdAt,
-    updatedAt: user.updatedAt,
-  }));
+export const getCompanyUsers = async (companyId: string, filters: UserListFilters) => {
+  return findUsersByCompany(companyId, filters);
 };
 
 export const getCompanyUserById = async (userId: string, companyId: string) => {

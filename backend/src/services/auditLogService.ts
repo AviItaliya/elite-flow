@@ -1,4 +1,4 @@
-import { createAuditLog, findAuditLogsByCompany } from "../repositories/auditLogRepository.js";
+import { AuditLogFilters, createAuditLog, findAuditLogsByCompany } from "../repositories/auditLogRepository.js";
 
 interface CreateAuditLogInput {
     actorId?: string | null;
@@ -15,6 +15,6 @@ export const logAuditEvent = async (input: CreateAuditLogInput) => {
     return createAuditLog(input);
 };
 
-export const getCompanyAuditLogs = async (companyId: string, page = 1, limit = 20) => {
-    return findAuditLogsByCompany(companyId, page, limit);
+export const getCompanyAuditLogs = async (companyId: string, filters: AuditLogFilters) => {
+  return findAuditLogsByCompany(companyId, filters);
 };

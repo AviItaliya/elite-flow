@@ -1,38 +1,76 @@
 import type { Response } from "express";
 import { prisma } from "../config/database.js";
 import { AuthenticatedRequest } from "../middleware/authMiddleware.js";
-import { getUserNotifications, markAllNotificationAsRead, markNotificationAsRead } from "../services/notificationService.js";
+import { getUserNotifications, markAllNotificationAsRead, markNotificationAsRead, NotificationListFilters, NotificationReadFilter, NotificationSortOrder } from "../services/notificationService.js";
 
 export const getNotifications = async (req: AuthenticatedRequest, res: Response) => {
-    try {
-        if(!req.user) {
-            return res.status(401).json({
-                success: false,
-                message: "Authentication required",
-            });
-        }
-
-        const page = Number(req.query.page ?? 1);
-        const limit = Number(req.query.limit ?? 20);
-
-        if(!Number.isInteger(page) || page < 1 || !Number.isInteger(limit) || limit < 1 || limit > 100) {
-            return res.status(400).json({
-                success: false,
-                message: "Page must be positive and limit must be between 1 and 100",
-            });
-        }
-
-        const data = await getUserNotifications(req.user.userId, page, limit);
-        return res.status(200).json({
-            success: true,
-            data,
-        });
-    } catch (error) {
-        return res.status(500).json({
-            success: false,
-            message: error instanceof Error ? error.message : "Failed to get notifications",
-        });
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      });
     }
+    const pageValue = req.query.page ?? "1";
+    const limitValue = req.query.limit ?? "20";
+    if (typeof pageValue !== "string" || !/^[1-9]\d*$/.test(pageValue)) {
+      return res.status(400).json({
+        success: false,
+        message: "page must be a positive integer",
+      });
+    }
+    if (typeof limitValue !== "string" || !/^[1-9]\d*$/.test(limitValue)) {
+      return res.status(400).json({
+        success: false,
+        message: "limit must be a positive integer",
+      });
+    }
+    const page = Number(pageValue);
+    const limit = Number(limitValue);
+    if (!Number.isSafeInteger(page)) {
+      return res.status(400).json({
+        success: false,
+        message: "page is too large",
+      });
+    }
+    if (!Number.isSafeInteger(limit) || limit > 100) {
+      return res.status(400).json({
+        success: false,
+        message: "limit must be between 1 and 100",
+      });
+    }
+    const readStatusValue = req.query.readStatus ?? "all";
+    if (typeof readStatusValue !== "string" || !["all", "read", "unread"].includes(readStatusValue)) {
+      return res.status(400).json({
+        success: false,
+        message: "readStatus must be all, read, or unread",
+      });
+    }
+    const sortOrderValue = req.query.sortOrder ?? "desc";
+    if (typeof sortOrderValue !== "string" || !["asc", "desc"].includes(sortOrderValue)) {
+      return res.status(400).json({
+        success: false,
+        message: "sortOrder must be asc or desc",
+      });
+    }
+    const filters: NotificationListFilters = {
+      page,
+      limit,
+      readStatus: readStatusValue as NotificationReadFilter,
+      sortOrder: sortOrderValue as NotificationSortOrder,
+    };
+    const data = await getUserNotifications(req.user.userId, filters);
+    return res.status(200).json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    console.error("Failed to get notifications:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to get notifications",
+    });
+  }
 };
 
 export const getUnreadNotificationCount = async (req: AuthenticatedRequest, res: Response) => {
