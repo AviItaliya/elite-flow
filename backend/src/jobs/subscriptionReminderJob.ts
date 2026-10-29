@@ -64,12 +64,13 @@ const runSubscriptionReminderJob = async () => {
           where: {
             id: existing.id,
             status: { in: ["PENDING", "FAILED"] },
+            attempts: {lt: 3},
             OR: [
               { claimedUntil: null },
               { claimedUntil: { lt: now } },
             ],
           },
-          data: { claimedUntil: claimUntil },
+          data: { claimedUntil: claimUntil, attempts: { increment: 1 } },
         });
 
         if (claimed.count === 0) continue;
@@ -129,5 +130,5 @@ export const startSubscriptionReminderJob = () => {
       console.error("Subscription reminder job failed:", error);
     }
   }, { timezone: "Asia/Kolkata" });
-  console.log("Cron job is running");
+  console.log("Subscription Reminder cron job is running");
 };

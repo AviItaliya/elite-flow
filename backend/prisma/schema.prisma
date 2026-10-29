@@ -327,9 +327,10 @@ model SubscriptionReminder {
   subscriptionId String
   type           ReminderType
   status         ReminderStatus @default(PENDING)
-  sentAt         DateTime?
+  sentAt         DateTime?  
   lastError      String?
   claimedUntil   DateTime?
+  attempts       Int            @default(0)
   subscription   Subscription   @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt

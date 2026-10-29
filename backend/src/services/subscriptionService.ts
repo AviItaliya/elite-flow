@@ -1,18 +1,8 @@
 import { prisma } from "../config/database.js";
-import {
-  createSubscription,
-  findCompanySubscription,
-  findPlanByIdForSubscription,
-  findCompanySubscriptions,
-  updateSubscriptionPlan,
-  cancelSubscription,
-  expireCompanySubscriptions,
-  findCompanySubscriptionById,
-} from "../repositories/subscriptionRepository.js";
-export const createCompanySubscription = async (
-  companyId: string,
-  planId: string,
-) => {
+import {createSubscription, findCompanySubscription, findPlanByIdForSubscription, findCompanySubscriptions, updateSubscriptionPlan,
+  cancelSubscription, expireCompanySubscriptions, findCompanySubscriptionById} from "../repositories/subscriptionRepository.js";
+  
+export const createCompanySubscription = async (companyId: string, planId: string) => {
   const existingSubscription = await findCompanySubscription(companyId);
   if (existingSubscription) {
     throw new Error("Company already has an active subscription");

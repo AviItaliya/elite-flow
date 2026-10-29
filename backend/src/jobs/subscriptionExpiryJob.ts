@@ -10,4 +10,5 @@ export const startSubscriptionExpiryJob = () => {
       console.error("Subscription expiry job failed:", error);
     }
   });
+  console.log("Subscription expiry cron job is running");
 };
