@@ -104,6 +104,8 @@ model User {
   name                    String
   email                   String                   @unique
   password                String
+  profileImageUrl         String?
+  profileImagePublicId    String?
   role                    UserRole                 @default(USER)
   status                  UserStatus               @default(ACTIVE)
   isVerified              Boolean                  @default(false)
@@ -120,6 +122,7 @@ model User {
   loginOtps               LoginOtp[]
   notifications           Notification[]
   auditLogs               AuditLog[]
+  fcmTokens               FcmToken[]
   createdAt               DateTime                 @default(now())
   updatedAt               DateTime                 @updatedAt
 }
@@ -221,7 +224,7 @@ model Subscription {
   planId                    String
   status                    SubscriptionStatus     @default(TRIAL)
   startDate                 DateTime
-  endDate                   DateTime
+  endDate                   DateTime?
   company                   Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
   plan                      Plan                   @relation(fields: [planId], references: [id], onDelete: Restrict)
   payments                  Payment[]
@@ -324,9 +327,10 @@ model SubscriptionReminder {
   subscriptionId String
   type           ReminderType
   status         ReminderStatus @default(PENDING)
-  sentAt         DateTime?
+  sentAt         DateTime?  
   lastError      String?
   claimedUntil   DateTime?
+  attempts       Int            @default(0)
   subscription   Subscription   @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
@@ -351,21 +355,32 @@ model Notification {
 }
 
 model AuditLog {
-  id String @id @default(uuid())
-  actorId String?
+  id        String   @id @default(uuid())
+  actorId   String?
   companyId String?
-  action String
-  entity String
-  entityId String?
-  details Json?
+  action    String
+  entity    String
+  entityId  String?
+  details   Json?
   ipAddress String?
   userAgent String?
   createdAt DateTime @default(now())
-  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
-  company Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  actor     User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
 
   @@index([actorId, createdAt])
   @@index([companyId, createdAt])
   @@index([entity, entityId])
   @@index([action, createdAt])
+}
+
+model FcmToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

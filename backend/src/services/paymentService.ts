@@ -3,64 +3,96 @@ import { findActivePlanById } from "../repositories/planRepository.js";
 import { findCompanySubscription } from "../repositories/subscriptionRepository.js";
 import { createPayment, findPendingRenewalPayment, markPaymentExpiredBySessionId } from "../repositories/paymentRepository.js";
 import { getSubscriptionRenewalEligibility } from "./subscriptionService.js";
+import { prisma } from "../config/database.js";
 
 export const createCheckoutSession = async (companyId: string, planId: string) => {
-    const plan = await findActivePlanById(planId);
-    if(!plan) {
-        throw new Error("Plan not found or inactive");
+  const plan = await findActivePlanById(planId);
+  if (!plan) {
+    throw new Error("Plan not found or inactive");
+  }
+  const planPrice = Number(plan.price);
+  const amountInPaise = Math.round(planPrice * 100);
+  if (!Number.isFinite(planPrice) || !Number.isInteger(amountInPaise) || amountInPaise <= 0) {
+    throw new Error("Invalid paid plan price");
+  }
+  const existingSubscription = await findCompanySubscription(companyId);
+  if (existingSubscription) {
+    const isPermanentFreePlan = Number(existingSubscription.plan.price) === 0 && existingSubscription.status === "ACTIVE" &&
+      existingSubscription.endDate === null;
+    if (!isPermanentFreePlan) {
+      throw new Error("Your company already has an active subscription. Use the renewal or plan-change flow.");
     }
-    const existingSubscription = await findCompanySubscription(companyId);
-    if(existingSubscription) {
-        throw new Error("Your company already has an active subscription");
+  }
+  const frontendUrl = process.env.FRONTEND_URL;
+  if (!frontendUrl) {
+    throw new Error("FRONTEND_URL is not configured");
+  }
+  const pendingPayment = await prisma.payment.findFirst({
+    where: {
+      companyId,
+      purpose: "NEW_SUBSCRIPTION",
+      status: "PENDING",
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  if (pendingPayment) {
+    const existingSession = await stripe.checkout.sessions.retrieve(pendingPayment.stripeCheckoutSessionId);
+    if (existingSession.status === "open" && existingSession.url) {
+      if (pendingPayment.planId !== planId) {
+        throw new Error("You already have a pending checkout for another plan. Complete or expire it before selecting another plan.");
+      }
+      return {
+        paymentId: pendingPayment.id,
+        sessionId: existingSession.id,
+        checkoutUrl: existingSession.url,
+      };
     }
-    const frontendUrl = process.env.FRONTEND_URL;
-    if(!frontendUrl) {
-        throw new Error("FRONTEND_URL is not configured");
+    if (existingSession.status !== "expired") {
+      throw new Error("Your previous payment is processing. Please wait before trying again.");
     }
-    const planPrice = Number(plan.price);
-    const amountInPaise = Math.round(planPrice * 100);
-    if(!Number.isFinite(planPrice) || !Number.isInteger(amountInPaise) || amountInPaise <= 0) {
-        throw new Error("Invalid plan price");
-    }
-    const session = await stripe.checkout.sessions.create({
-        mode: "payment",
-        // payment_method_types: ["card"],
-        line_items: [{
-            price_data: {
-                currency: "inr",
-                product_data: {
-                    name: plan.name,
-                    description: plan.description ?? undefined,
-                },
-                unit_amount: amountInPaise,
-            },
-            quantity: 1,
-        }],
-        client_reference_id: companyId,
-        metadata: {
-            companyId,
-            planId,
+    await markPaymentExpiredBySessionId(existingSession.id);
+  }
+  const session = await stripe.checkout.sessions.create({
+    mode: "payment",
+    line_items: [
+      {
+        price_data: {
+          currency: "inr",
+          product_data: {
+            name: plan.name,
+            description: plan.description ?? undefined,
+          },
+          unit_amount: amountInPaise,
         },
-        success_url: `${frontendUrl}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${frontendUrl}/payment/cancelled`
-    });
-    if(!session.id || !session.url) {
-        throw new Error("Failed to create Stripe Checkout Session");
-    }
-    await createPayment({
-        companyId,
-        planId,
-        stripeCheckoutSessionId: session.id,
-        amount: planPrice,
-        currency: "inr"
-    });
-    return {
-        paymentId: session.id,
-        sessionId: session.id,
-        checkoutUrl: session.url,
-    };
+        quantity: 1,
+      },
+    ],
+    client_reference_id: companyId,
+    metadata: {
+      companyId,
+      planId: plan.id,
+      purpose: "NEW_SUBSCRIPTION",
+    },
+    success_url: `${frontendUrl}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${frontendUrl}/payment/cancelled`,
+  });
+  if (!session.id || !session.url) {
+    throw new Error("Failed to create Stripe Checkout Session");
+  }
+  const payment = await createPayment({
+    companyId,
+    planId: plan.id,
+    stripeCheckoutSessionId: session.id,
+    amount: planPrice,
+    currency: "inr",
+    purpose: "NEW_SUBSCRIPTION",
+  });
+  return {
+    paymentId: payment.id,
+    sessionId: session.id,
+    checkoutUrl: session.url,
+  };
 };
-
 
 export const createRenewalCheckoutSession = async (
   companyId: string,

@@ -1,5 +1,20 @@
 import { prisma } from "../config/database.js";
 
+export type CompanyUserRole = "ADMIN" | "USER";
+export type CompanyUserStatus = "ACTIVE" | "INACTIVE";
+export type UserSortField = "createdAt" | "updatedAt" | "name" | "email";
+export type UserSortOrder = "asc" | "desc";
+
+export interface UserListFilters {
+  page: number;
+  limit: number;
+  search?: string;
+  role?: CompanyUserRole;
+  status?: CompanyUserStatus;
+  sortBy: UserSortField;
+  sortOrder: UserSortOrder;
+}
+
 export const findSuperadmin = async () => {
   return prisma.user.findFirst({
     where: {
@@ -54,10 +69,7 @@ export const findUserById = async (userId: string) => {
   });
 };
 
-export const findUserByIdAndCompany = async (
-  userId: string,
-  companyId: string
-) => {
+export const findUserByIdAndCompany = async (userId: string, companyId: string) => {
   return prisma.user.findFirst({
     where: {
       id: userId,
@@ -70,18 +82,64 @@ export const findUserByIdAndCompany = async (
   });
 };
 
-export const findUsersByCompany = async (
-  companyId: string
-) => {
-  return prisma.user.findMany({
-    where: {
-      companyId,
-      deletedAt: null,
+export const findUsersByCompany = async (companyId: string, filters: UserListFilters) => {
+  const {page, limit, search, role, status, sortBy, sortOrder} = filters;
+  const where = {
+    companyId,
+    deletedAt: null,
+    ...(role ? { role } : {}),
+    ...(status ? { status } : {}),
+    ...(search
+      ? {
+          OR: [
+            {
+              name: {
+                contains: search,
+                mode: "insensitive" as const,
+              },
+            },
+            {
+              email: {
+                contains: search,
+                mode: "insensitive" as const,
+              },
+            },
+          ],
+        }
+      : {}),
+  };
+  const [users, total] = await prisma.$transaction([
+    prisma.user.findMany({
+      where,
+      orderBy: {[sortBy]: sortOrder},
+      skip: (page - 1) * limit,
+      take: limit,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        status: true,
+        isVerified: true,
+        companyId: true,
+        profileImageUrl: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    }),
+    prisma.user.count({
+      where,
+    }),
+  ]);
+  return {
+    users,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
     },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
+  };
 };
 
 export const createUser = async (data: {
@@ -121,10 +179,7 @@ export const updateUser = async (
   });
 };
 
-export const updateUserStatus = async (
-  userId: string,
-  status: "ACTIVE" | "INACTIVE"
-) => {
+export const updateUserStatus = async (userId: string, status: "ACTIVE" | "INACTIVE") => {
   return prisma.user.update({
     where: {
       id: userId,
@@ -135,9 +190,7 @@ export const updateUserStatus = async (
   });
 };
 
-export const softDeleteUser = async (
-  userId: string
-) => {
+export const softDeleteUser = async (userId: string) => {
   return prisma.user.update({
     where: {
       id: userId,
@@ -149,13 +202,51 @@ export const softDeleteUser = async (
   });
 };
 
-export const countCompanyUsers = async (
-  companyId: string
-) => {
+export const countCompanyUsers = async (companyId: string) => {
   return prisma.user.count({
     where: {
       companyId,
       deletedAt: null,
+    },
+  });
+};
+
+export const updateUserProfileImage = async (userId: string, profileImageUrl: string, profileImagePublicId: string) => {
+  return prisma.user.update({
+    where: {
+      id: userId,
+    },
+    data: {
+      profileImageUrl,
+      profileImagePublicId,
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      profileImageUrl: true,
+      profileImagePublicId: true,
+      updatedAt: true,
+    },
+  });
+};
+
+export const clearUserProfileImage = async (userId: string) => {
+  return prisma.user.update({
+    where: {
+      id: userId,
+    },
+    data: {
+      profileImageUrl: null,
+      profileImagePublicId: null,
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      profileImageUrl: true,
+      profileImagePublicId: true,
+      updatedAt: true,
     },
   });
 };

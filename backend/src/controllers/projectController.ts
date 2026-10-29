@@ -4,16 +4,69 @@ import {createCompanyProject, deleteCompanyProject, getCompanyProjectById, getCo
 import { getRequiredCompanyId } from "../utils/company.js";
 import { getParamId } from "../utils/request.js";
 import { AuthenticatedRequest } from "../middleware/authMiddleware.js";
+import { ProjectListFilters, ProjectSortField, ProjectStatus, SortOrder } from "../repositories/projectRepository.js";
 
 export const getProjects = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const companyId = getRequiredCompanyId(req as any);
-    const projects = await getCompanyProjects(companyId);
+    const page = Number(req.query.page ?? 1);
+    const limit = Number(req.query.limit ?? 10);
+    const search = typeof req.query.search === "string" ? req.query.search.trim() : undefined;
+    const status = req.query.status;
+    const sortBy = req.query.sortBy ?? "createdAt";
+    const sortOrder = req.query.sortOrder ?? "desc";
+
+    // Validate pagination
+    if (!Number.isInteger(page) || !Number.isInteger(limit) || page < 1 || limit < 1 || limit > 100) {
+      return res.status(400).json({
+        success: false,
+        message: "Page must be positive and limit must be between 1 and 100",
+      });
+    }
+
+    // Validate search
+    if (search !== undefined && search.length > 200) {
+      return res.status(400).json({
+        success: false,
+        message: "Search cannot exceed 200 characters",
+      });
+    }
+
+    // Validate project status
+    const allowedStatuses: ProjectStatus[] = ["PLANNING", "ACTIVE", "COMPLETED", "ON_HOLD", "CANCELLED"];
+    if (status !== undefined && (typeof status !== "string" || !allowedStatuses.includes(status as ProjectStatus))) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid project status",
+      });
+    }
+
+    // Validate sorting
+    const allowedSortFields: ProjectSortField[] = ["createdAt", "updatedAt", "name", "startDate", "endDate"];
+    if (typeof sortBy !== "string" || !allowedSortFields.includes(sortBy as ProjectSortField)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid sortBy field",
+      });
+    }
+    if (typeof sortOrder !== "string" || !["asc", "desc"].includes(sortOrder)) {
+      return res.status(400).json({
+        success: false,
+        message: "sortOrder must be asc or desc",
+      });
+    }
+    const filters: ProjectListFilters = {
+      page,
+      limit,
+      search: search || undefined,
+      status: status as ProjectStatus | undefined,
+      sortBy: sortBy as ProjectSortField,
+      sortOrder: sortOrder as SortOrder,
+    };
+    const result = await getCompanyProjects(companyId, filters);
     return res.status(200).json({
       success: true,
-      data: {
-        projects,
-      },
+      data: result,
     });
   } catch (error) {
     return res.status(400).json({

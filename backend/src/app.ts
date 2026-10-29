@@ -12,11 +12,13 @@ import dashboardRoutes from "./routes/dashboardRoutes.js";
 import superadminRoutes from "./routes/superadminRoutes.js";
 import planRoutes from "./routes/planRoutes.js";
 import subscriptionRoutes from "./routes/subscriptionRoutes.js";
-import paymentRoutes from "./routes/paymentRoutes.js";
+// import paymentRoutes from "./routes/paymentRoutes.js";
 import { stripeWebhookController } from "./controllers/stripeWebhookController.js";
 import renewalRoutes from "./routes/renewalRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import auditLogRoutes from "./routes/auditLogRoutes.js";
+import fcmTokenRoutes from "./routes/fcmTokenRoutes.js";
+import pushNotificationRoutes from "./routes/pushNotificationRoutes.js";
 
 const app = express();
 
@@ -54,8 +56,10 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/plans", planRoutes);
 app.use("/api/subscriptions", subscriptionRoutes);
-app.use("/api/payments", paymentRoutes);
+// app.use("/api/payments", paymentRoutes);
 app.use("/api/renewals", renewalRoutes);
 app.use("/api/audit-logs", auditLogRoutes);
+app.use("/api/fcm-tokens", fcmTokenRoutes);
+app.use("/api/push-notifications", pushNotificationRoutes);
 
 export default app;

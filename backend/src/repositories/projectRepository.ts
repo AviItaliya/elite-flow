@@ -1,20 +1,55 @@
 import { prisma } from "../config/database.js";
 
-export const findProjectsByCompany = async (companyId: string) => {
-  return prisma.project.findMany({
-    where: {
-      companyId,
+export type ProjectStatus = "PLANNING" | "ACTIVE" | "COMPLETED" | "ON_HOLD" | "CANCELLED";
+export type ProjectSortField = "createdAt" | "updatedAt" | "name" | "startDate" | "endDate";
+export type SortOrder = "asc" | "desc";
+
+export interface ProjectListFilters {
+  page: number;
+  limit: number;
+  search?: string;
+  status?: ProjectStatus;
+  sortBy: ProjectSortField;
+  sortOrder: SortOrder;
+}
+
+export const findProjectsByCompany = async (companyId: string, filters: ProjectListFilters) => {
+  const {page, limit, search, status, sortBy, sortOrder} = filters;
+  const where = {
+    companyId,
+    ...(status ? { status } : {}),
+    ...(search
+      ? {
+          name: {
+            contains: search,
+            mode: "insensitive" as const,
+          },
+        }
+      : {}),
+  };
+  const [projects, total] = await prisma.$transaction([
+    prisma.project.findMany({
+      where,
+      orderBy: {[sortBy]: sortOrder},
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.project.count({
+      where,
+    }),
+  ]);
+  return {
+    projects,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
     },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
+  };
 };
 
-export const findProjectByIdAndCompany = async (
-  projectId: string,
-  companyId: string
-) => {
+export const findProjectByIdAndCompany = async (projectId: string, companyId: string) => {
   return prisma.project.findFirst({
     where: {
       id: projectId,
@@ -75,13 +110,7 @@ export const updateProject = async (
 
 export const updateProjectStatus = async (
   projectId: string,
-  status:
-    | "PLANNING"
-    | "ACTIVE"
-    | "COMPLETED"
-    | "ON_HOLD"
-    | "CANCELLED"
-) => {
+  status: "PLANNING" | "ACTIVE" | "COMPLETED" | "ON_HOLD" | "CANCELLED") => {
   return prisma.project.update({
     where: {
       id: projectId,
@@ -100,10 +129,7 @@ export const deleteProject = async (projectId: string) => {
   });
 };
 
-export const findProjectMember = async (
-  projectId: string,
-  userId: string
-) => {
+export const findProjectMember = async (projectId: string, userId: string) => {
   return prisma.projectMember.findUnique({
     where: {
       projectId_userId: {
@@ -136,10 +162,7 @@ export const findProjectMembers = async (projectId: string) => {
   });
 };
 
-export const addProjectMember = async (
-  projectId: string,
-  userId: string
-) => {
+export const addProjectMember = async (projectId: string, userId: string) => {
   return prisma.projectMember.create({
     data: {
       projectId,
@@ -159,10 +182,7 @@ export const addProjectMember = async (
   });
 };
 
-export const removeProjectMember = async (
-  projectId: string,
-  userId: string
-) => {
+export const removeProjectMember = async (projectId: string, userId: string) => {
   return prisma.projectMember.delete({
     where: {
       projectId_userId: {
@@ -173,9 +193,7 @@ export const removeProjectMember = async (
   });
 };
 
-export const countCompanyProjects = async (
-  companyId: string
-) => {
+export const countCompanyProjects = async (companyId: string) => {
   return prisma.project.count({
     where: {
       companyId,

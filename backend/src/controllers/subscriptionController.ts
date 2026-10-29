@@ -1,7 +1,9 @@
 import type { Response } from "express";
 import type { AuthenticatedRequest } from "../middleware/authMiddleware.js";
-import {createCompanySubscription, getCompanySubscription, getCompanySubscriptionHistory, changeCompanyPlan, cancelCompanySubscription} from "../services/subscriptionService.js";
+import {getCompanySubscription, getCompanySubscriptionHistory, changeCompanyPlan, cancelCompanySubscription, createCompanySubscription} from "../services/subscriptionService.js";
 import {createSubscriptionSchema, changeSubscriptionPlanSchema} from "../validators/subscriptionValidator.js";
+import { createCheckoutSession } from "../services/paymentService.js";
+import { findActivePlanById } from "../repositories/planRepository.js";
 
 export const createSubscriptionController = async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -20,11 +22,39 @@ export const createSubscriptionController = async (req: AuthenticatedRequest, re
         errors: result.error.flatten().fieldErrors,
       });
     }
-    const subscription = await createCompanySubscription(companyId, result.data.planId);
+    const plan = await findActivePlanById(result.data.planId);
+    if (!plan) {
+      return res.status(404).json({
+        success: false,
+        message: "Plan not found or inactive",
+      });
+    }
+
+    // FREE PLAN: Activate immediately without Stripe.
+    if (Number(plan.price) === 0) {
+      const subscription = await createCompanySubscription(
+        companyId,
+        plan.id
+      );
+      return res.status(201).json({
+        success: true,
+        message: "Free subscription activated successfully",
+        data: {
+          type: "FREE",
+          subscription,
+        },
+      });
+    }
+
+    // PAID PLAN: Create Stripe Checkout session.
+    const checkout = await createCheckoutSession(companyId, plan.id);
     return res.status(201).json({
       success: true,
-      message: "Subscription created successfully",
-      data: subscription,
+      message: "Stripe Checkout session created successfully",
+      data: {
+        type: "PAID",
+        ...checkout,
+      },
     });
   } catch (error) {
     return res.status(400).json({

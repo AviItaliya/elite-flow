@@ -1,18 +1,15 @@
 import { NotificationType } from "../generated/prisma/enums.js";
-import { createComment, deleteComment, findCommentById, findCommentsByTask, updateComment } from "../repositories/commentRepository.js";
+import { CommentListFilters, createComment, deleteComment, findCommentById, findCommentsByTask, updateComment } from "../repositories/commentRepository.js";
 import { findTaskById } from "../repositories/taskRepository.js"
 import { findUserByIdAndCompany } from "../repositories/userRepository.js";
 import { createNotification } from "./notificationService.js";
 
-export const getTaskComments = async (taskId: string, companyId: string) => {
+export const getTaskComments = async (taskId: string, companyId: string, filters: CommentListFilters) => {
   const task = await findTaskById(taskId);
-  if(!task) {
+  if (!task || task.project.companyId !== companyId) {
     throw new Error("Task not found");
   }
-  if(task.project.companyId !== companyId) {
-    throw new Error("Task not found");
-  }
-  return findCommentsByTask(taskId);
+  return findCommentsByTask(taskId, filters);
 };
 
 export const createTaskComment = async(taskId: string, userId: string, companyId: string, content: string) => {
