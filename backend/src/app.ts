@@ -17,6 +17,8 @@ import { stripeWebhookController } from "./controllers/stripeWebhookController.j
 import renewalRoutes from "./routes/renewalRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import auditLogRoutes from "./routes/auditLogRoutes.js";
+import fcmTokenRoutes from "./routes/fcmTokenRoutes.js";
+import pushNotificationRoutes from "./routes/pushNotificationRoutes.js";
 
 const app = express();
 
@@ -57,5 +59,7 @@ app.use("/api/subscriptions", subscriptionRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/renewals", renewalRoutes);
 app.use("/api/audit-logs", auditLogRoutes);
+app.use("/api/fcm-tokens", fcmTokenRoutes);
+app.use("/api/push-notifications", pushNotificationRoutes);
 
 export default app;

@@ -129,4 +129,5 @@ export const startSubscriptionReminderJob = () => {
       console.error("Subscription reminder job failed:", error);
     }
   }, { timezone: "Asia/Kolkata" });
+  console.log("Cron job is running");
 };

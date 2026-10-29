@@ -1,7 +1,7 @@
 import type { Response } from "express";
 import { getParamId } from "../utils/request.js";
 import type { AuthenticatedRequest } from "../middleware/authMiddleware.js";
-import { changeUserStatus, createManagedUser, deleteManagedUser, getCompanyUserById, getCompanyUsers, getCurrentUser, updateManagedUser } from "../services/userService.js";
+import { changeUserStatus, createManagedUser, deleteManagedUser, getCompanyUserById, getCompanyUsers, getCurrentUser, removeCurrentUserProfileImage, updateCurrentUserProfileImage, updateManagedUser } from "../services/userService.js";
 import { createUserSchema, updateUserSchema, updateUserStatusSchema } from "../validators/userValidator.js";
 import { getRequiredCompanyId } from "../utils/company.js";
 
@@ -255,4 +255,66 @@ export const deleteUser = async (
       message: "Something went wrong",
     });
   }
+};
+
+export const uploadMyProfileImage = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        if (!req.user) {
+            return res.status(401).json({
+                success: false,
+                message: "Authentication required",
+            });
+        }
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: "Please select an image to upload",
+            });
+        }
+        const user = await updateCurrentUserProfileImage(req.user.userId, req.file.buffer);
+        return res.status(200).json({
+            success: true,
+            message: "Profile image uploaded successfully",
+            data: user,
+        });
+    } catch (error) {
+        if (error instanceof Error) {
+            return res.status(400).json({
+                success: false,
+                message: error.message,
+            });
+        }
+        return res.status(500).json({
+            success: false,
+            message: "Something went wrong",
+        });
+    }
+};
+
+export const deleteMyProfileImage = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        if (!req.user) {
+            return res.status(401).json({
+                success: false,
+                message: "Authentication required",
+            });
+        }
+        const user = await removeCurrentUserProfileImage(req.user.userId);
+        return res.status(200).json({
+            success: true,
+            message: "Profile image removed successfully",
+            data: user,
+        });
+    } catch (error) {
+        if (error instanceof Error) {
+            return res.status(400).json({
+                success: false,
+                message: error.message,
+            });
+        }
+        return res.status(500).json({
+            success: false,
+            message: "Something went wrong",
+        });
+    }
 };

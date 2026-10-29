@@ -159,3 +159,49 @@ export const countCompanyUsers = async (
     },
   });
 };
+
+export const updateUserProfileImage = async (
+  userId: string,
+  profileImageUrl: string,
+  profileImagePublicId: string
+) => {
+  return prisma.user.update({
+    where: {
+      id: userId,
+    },
+    data: {
+      profileImageUrl,
+      profileImagePublicId,
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      profileImageUrl: true,
+      profileImagePublicId: true,
+      updatedAt: true,
+    },
+  });
+};
+
+export const clearUserProfileImage = async (
+  userId: string
+) => {
+  return prisma.user.update({
+    where: {
+      id: userId,
+    },
+    data: {
+      profileImageUrl: null,
+      profileImagePublicId: null,
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      profileImageUrl: true,
+      profileImagePublicId: true,
+      updatedAt: true,
+    },
+  });
+};
