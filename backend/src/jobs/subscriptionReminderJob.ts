@@ -125,7 +125,7 @@ const runSubscriptionReminderJob = async () => {
 };
 
 export const startSubscriptionReminderJob = () => {
-  cron.schedule("0 9 * * *", async () => {
+  cron.schedule("30 10 * * *", async () => {
     try {
       await runSubscriptionReminderJob();
     } catch (error) {

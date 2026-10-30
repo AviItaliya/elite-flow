@@ -6,8 +6,9 @@ export const createPayment = async (data: {
   stripeCheckoutSessionId: string;
   amount: number;
   currency: string;
-  purpose?: "NEW_SUBSCRIPTION" | "RENEWAL";
+  purpose?: "NEW_SUBSCRIPTION" | "RENEWAL" | "PLAN_CHANGE";
   renewalForSubscriptionId?: string;
+  planChangeForSubscriptionId?: string;
 }) => {
   return prisma.payment.create({
     data: {
@@ -18,6 +19,7 @@ export const createPayment = async (data: {
       currency: data.currency,
       purpose: data.purpose ?? "NEW_SUBSCRIPTION",
       renewalForSubscriptionId: data.renewalForSubscriptionId,
+      planChangeForSubscriptionId: data.planChangeForSubscriptionId,
     },
   });
 };

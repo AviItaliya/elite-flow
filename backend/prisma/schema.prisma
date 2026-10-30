@@ -59,6 +59,7 @@ enum PaymentStatus {
 enum PaymentPurpose {
   NEW_SUBSCRIPTION
   RENEWAL
+  PLAN_CHANGE
 }
 
 enum ReminderType {
@@ -78,6 +79,12 @@ enum NotificationType {
   TASK_COMMENTED
   TASK_STATUS_CHANGED
   SYSTEM
+}
+
+enum UserDeactivationReason {
+  SUBSCRIPTION_EXPIRED
+  MANUAL
+  COMPANY_SUSPENDED
 }
 
 model Company {
@@ -108,6 +115,7 @@ model User {
   profileImagePublicId    String?
   role                    UserRole                 @default(USER)
   status                  UserStatus               @default(ACTIVE)
+  deactivationReason      UserDeactivationReason?
   isVerified              Boolean                  @default(false)
   deletedAt               DateTime?
   company                 Company?                 @relation(fields: [companyId], references: [id], onDelete: SetNull)
@@ -229,6 +237,7 @@ model Subscription {
   plan                      Plan                   @relation(fields: [planId], references: [id], onDelete: Restrict)
   payments                  Payment[]
   renewalPayments           Payment[]              @relation("RenewalForSubscription")
+  planChangePayments        Payment[]              @relation("PlanChangeForSubscription")
   renewedFromSubscriptionId String?                @unique
   renewedFromSubscription   Subscription?          @relation("SubscriptionRenewalChain", fields: [renewedFromSubscriptionId], references: [id], onDelete: SetNull)
   nextSubscription          Subscription?          @relation("SubscriptionRenewalChain")
@@ -296,24 +305,26 @@ model LoginOtp {
 }
 
 model Payment {
-  id                       String         @id @default(uuid())
-  companyId                String
-  planId                   String
-  subscriptionId           String?
-  stripeCheckoutSessionId  String         @unique
-  stripePaymentIntentId    String?        @unique
-  amount                   Decimal        @db.Decimal(10, 2)
-  currency                 String         @default("inr")
-  status                   PaymentStatus  @default(PENDING)
-  paidAt                   DateTime?
-  company                  Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  plan                     Plan           @relation(fields: [planId], references: [id], onDelete: Restrict)
-  subscription             Subscription?  @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
-  purpose                  PaymentPurpose @default(NEW_SUBSCRIPTION)
-  renewalForSubscriptionId String?
-  renewalForSubscription   Subscription?  @relation("RenewalForSubscription", fields: [renewalForSubscriptionId], references: [id], onDelete: SetNull)
-  createdAt                DateTime       @default(now())
-  updatedAt                DateTime       @updatedAt
+  id                          String         @id @default(uuid())
+  companyId                   String
+  planId                      String
+  subscriptionId              String?
+  stripeCheckoutSessionId     String         @unique
+  stripePaymentIntentId       String?        @unique
+  amount                      Decimal        @db.Decimal(10, 2)
+  currency                    String         @default("inr")
+  status                      PaymentStatus  @default(PENDING)
+  paidAt                      DateTime?
+  company                     Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  plan                        Plan           @relation(fields: [planId], references: [id], onDelete: Restrict)
+  subscription                Subscription?  @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  purpose                     PaymentPurpose @default(NEW_SUBSCRIPTION)
+  renewalForSubscriptionId    String?
+  renewalForSubscription      Subscription?  @relation("RenewalForSubscription", fields: [renewalForSubscriptionId], references: [id], onDelete: SetNull)
+  planChangeForSubscriptionId String?
+  planChangeForSubscription   Subscription?  @relation("PlanChangeForSubscription", fields: [planChangeForSubscriptionId], references: [id], onDelete: SetNull)
+  createdAt                   DateTime       @default(now())
+  updatedAt                   DateTime       @updatedAt
 
   @@index([companyId])
   @@index([planId])
@@ -327,7 +338,7 @@ model SubscriptionReminder {
   subscriptionId String
   type           ReminderType
   status         ReminderStatus @default(PENDING)
-  sentAt         DateTime?  
+  sentAt         DateTime?
   lastError      String?
   claimedUntil   DateTime?
   attempts       Int            @default(0)

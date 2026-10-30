@@ -1,5 +1,5 @@
 import { prisma } from "../config/database.js";
-import {createSubscription, findCompanySubscription, findPlanByIdForSubscription, findCompanySubscriptions, updateSubscriptionPlan,
+import {createSubscription, findCompanySubscription, findPlanByIdForSubscription, findCompanySubscriptions,
   cancelSubscription, expireCompanySubscriptions, findCompanySubscriptionById} from "../repositories/subscriptionRepository.js";
 
 export const createCompanySubscription = async (companyId: string, planId: string) => {
@@ -63,24 +63,34 @@ export const getCompanySubscriptionHistory = async (companyId: string) => {
   return findCompanySubscriptions(companyId);
 };
 
-export const changeCompanyPlan = async (companyId: string, planId: string) => {
-  const subscription = await findCompanySubscription(companyId);
-  if (!subscription) {
-    throw new Error("No active subscription found for this company");
-  }
-  const plan = await findPlanByIdForSubscription(planId);
-  if (!plan) {
-    throw new Error("Plan not found or inactive");
-  }
-  const startDate = new Date();
-  const endDate = new Date(startDate);
-  endDate.setDate(endDate.getDate() + plan.durationDays);
-  return updateSubscriptionPlan(subscription.id, {
-    planId: plan.id,
-    startDate,
-    endDate,
-    status: "ACTIVE",
-  });
+// export const changeCompanyPlan = async (companyId: string, planId: string) => {
+//   const subscription = await findCompanySubscription(companyId);
+//   if (!subscription) {
+//     throw new Error("No active subscription found for this company");
+//   }
+//   const plan = await findPlanByIdForSubscription(planId);
+//   if (!plan) {
+//     throw new Error("Plan not found or inactive");
+//   }
+//   const startDate = new Date();
+//   const endDate = new Date(startDate);
+//   endDate.setDate(endDate.getDate() + plan.durationDays);
+//   return updateSubscriptionPlan(subscription.id, {
+//     planId: plan.id,
+//     startDate,
+//     endDate,
+//     status: "ACTIVE",
+//   });
+// };
+
+export const changeCompanyPlan = async (
+  _companyId: string,
+  _planId: string,
+): Promise<never> => {
+  throw new Error(
+    "Direct plan changes are temporarily disabled. " +
+      "Plan changes must use the Stripe Checkout payment flow.",
+  );
 };
 
 export const cancelCompanySubscription = async (companyId: string) => {
@@ -106,7 +116,7 @@ export const expireSubscriptions = async () => {
   const now = new Date();
 
   await prisma.$transaction(async (tx) => {
-    // 1. Expire only subscriptions that have an actual end date.
+    // 1. Mark subscriptions as expired when their end date has passed.
     await tx.subscription.updateMany({
       where: {
         status: { in: ["ACTIVE", "TRIAL"] },
@@ -120,11 +130,20 @@ export const expireSubscriptions = async () => {
       },
     });
 
-    // 2. Check active companies.
+    // 2. Find active, non-suspended companies with expired subscriptions.
     const companies = await tx.company.findMany({
       where: {
         isActive: true,
         isSuspended: false,
+        subscriptions: {
+          some: {
+            status: "EXPIRED",
+            endDate: {
+              not: null,
+              lte: now,
+            },
+          },
+        },
       },
       select: {
         id: true,
@@ -132,7 +151,7 @@ export const expireSubscriptions = async () => {
     });
 
     for (const company of companies) {
-      // 3. A permanent subscription (endDate: null) is also valid.
+      // 3. Check whether the company has another valid subscription.
       const validSubscription = await tx.subscription.findFirst({
         where: {
           companyId: company.id,
@@ -148,18 +167,31 @@ export const expireSubscriptions = async () => {
         },
       });
 
-      // 4. Deactivate only companies without a valid subscription.
-      if (!validSubscription) {
-        await tx.company.updateMany({
-          where: {
-            id: company.id,
-            isSuspended: false,
-          },
-          data: {
-            isActive: false,
-          },
-        });
+      // 4. Keep the company active if another valid subscription exists.
+      if (validSubscription) {
+        continue;
       }
+
+      // 5. Deactivate active regular users only.
+      // Keep the Company Admin active for restricted billing access.
+      // Do not affect platform administrators or already inactive users.
+      await tx.user.updateMany({
+        where: {
+          companyId: company.id,
+          role: "USER",
+          status: "ACTIVE",
+          deletedAt: null,
+        },
+        data: {
+          status: "INACTIVE",
+          deactivationReason: "SUBSCRIPTION_EXPIRED",
+        },
+      });
+
+      // IMPORTANT:
+      // Do not set company.isActive = false.
+      // The Company Admin must remain able to access the
+      // restricted billing and read-only experience.
     }
   });
 };

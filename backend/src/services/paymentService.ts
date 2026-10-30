@@ -211,3 +211,108 @@ if (pendingPayment) {
     checkoutUrl: session.url,
   };
 };
+
+export const createPlanChangeCheckoutSession = async (companyId: string, newPlanId: string) => {
+  const newPlan = await findActivePlanById(newPlanId);
+  if(!newPlan) {
+    throw new Error("Plan not found or inactive");
+  }
+  const planPrice = Number(newPlan.price);
+  const amountInPaise = Math.round(planPrice * 100);
+  if(!Number.isFinite(planPrice) || !Number.isInteger(amountInPaise) || amountInPaise <= 0) {
+    throw new Error("Plan changes require a valid paid plan");
+  }
+  const currentSubscription = await findCompanySubscription(companyId);
+  if(!currentSubscription) {
+    throw new Error("No active subscription found. Use the new subscription flow instead.");
+  }
+  if(currentSubscription.planId === newPlan.id) {
+    throw new Error("Your company is already subscribed to this plan");
+  }
+  const frontendUrl = process.env.FRONTEND_URL;
+  if(!frontendUrl) {
+    throw new Error("FRONTEND_URL is not configured");
+  }
+  const pendingPayment = await prisma.payment.findFirst({
+    where: {
+      companyId,
+      purpose: "PLAN_CHANGE",
+      planChangeForSubscriptionId: currentSubscription.id,
+      status: "PENDING",
+    },
+    orderBy: {
+      createdAt: "desc",
+    }
+  });
+  if(pendingPayment) {
+    const existingSession = await stripe.checkout.sessions.retrieve(pendingPayment.stripeCheckoutSessionId);
+    if(existingSession.status === "open" && existingSession.url) {
+      if(pendingPayment.planId !== newPlan.id) {
+        throw new Error("You already have a pending plan-change checkout. Complete or expire it before selecting another plan.");
+      }
+      return {
+        paymentId: pendingPayment.id,
+        sessionId: existingSession.id,
+        checkoutUrl: existingSession.url
+      };
+    }
+    if(existingSession.status !== "expired") {
+      throw new Error("Your previous plan-change payment is processing. Please wait before trying again");
+    }
+    await markPaymentExpiredBySessionId(existingSession.id);
+  }
+  const session = await stripe.checkout.sessions.create({
+    mode: "payment",
+    line_items: [
+      {
+        price_data: {
+          currency: "inr",
+          product_data: {
+            name: `${newPlan.name} - Plan Change`,
+            description: newPlan.description ?? undefined
+          },
+          unit_amount: amountInPaise
+        },
+        quantity: 1,
+      },
+    ],
+    client_reference_id: companyId,
+    metadata: {
+      companyId,
+      planId: newPlan.id,
+      purpose: "PLAN_CHANGE",
+      planChangeForSubscriptionId: currentSubscription.id,
+    },
+    success_url: `${frontendUrl}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${frontendUrl}/payment/cancelled`
+  });
+  if(!session.id || !session.url) {
+    throw new Error("Failed to create Stripe Checkout Session");
+  }
+  try {
+    const payment = await createPayment({
+      companyId,
+      planId: newPlan.id,
+      stripeCheckoutSessionId: session.id,
+      amount: planPrice,
+      currency: "inr",
+      purpose: "PLAN_CHANGE",
+      planChangeForSubscriptionId: currentSubscription.id,
+    });
+    return {
+      paymentId: payment.id,
+      sessionId: session.id,
+      checkoutUrl: session.url
+    };
+  } catch (error) {
+    try {
+      await stripe.checkout.sessions.expire(session.id);
+    } catch (expireError) {
+      console.error("Failed to expire orphaned plan-change checkout:", {
+        sessionId: session.id,
+        expireError
+      });
+    }
+    throw error;
+  }
+};
