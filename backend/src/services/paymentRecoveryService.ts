@@ -15,7 +15,15 @@ export const recoverReviewRequiredPayment = async (
     throw new Error("This payment already has an associated subscription. Manual review is required.");
   }
 
-  const session = await stripe.checkout.sessions.retrieve(payment.stripeCheckoutSessionId);
+  if (!payment.stripeCheckoutSessionId) {
+  throw new Error(
+    "Payment has no Stripe Checkout Session ID. Manual review is required.",
+  );
+}
+
+const session = await stripe.checkout.sessions.retrieve(
+  payment.stripeCheckoutSessionId,
+);
 
   if (
     session.id !== payment.stripeCheckoutSessionId ||

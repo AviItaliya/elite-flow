@@ -1,4 +1,3 @@
-
 import type { Request, Response } from "express";
 import type Stripe from "stripe";
 
@@ -52,7 +51,6 @@ export const stripeWebhookController = async (
 
       case "checkout.session.expired": {
         const session = event.data.object as Stripe.Checkout.Session;
-
         await markPaymentExpiredBySessionId(session.id);
         console.log("Checkout session expired:", session.id);
         break;
@@ -60,9 +58,18 @@ export const stripeWebhookController = async (
 
       case "checkout.session.async_payment_failed": {
         const session = event.data.object as Stripe.Checkout.Session;
-
         await markPaymentFailedBySessionId(session.id);
         console.log("Checkout payment failed:", session.id);
+        break;
+      }
+
+      case "payment_intent.payment_failed": {
+        const paymentIntent = event.data.object as Stripe.PaymentIntent;            
+        console.warn("Stripe payment attempt failed:", {
+          paymentIntentId: paymentIntent.id,
+          paymentId: paymentIntent.metadata.paymentId,
+          failureMessage: paymentIntent.last_payment_error?.message,
+        });      
         break;
       }
 

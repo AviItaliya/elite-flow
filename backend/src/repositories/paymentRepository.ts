@@ -3,7 +3,6 @@ import { prisma } from "../config/database.js";
 export const createPayment = async (data: {
   companyId: string;
   planId: string;
-  stripeCheckoutSessionId: string;
   amount: number;
   currency: string;
   purpose?: "NEW_SUBSCRIPTION" | "RENEWAL" | "PLAN_CHANGE";
@@ -14,7 +13,6 @@ export const createPayment = async (data: {
     data: {
       companyId: data.companyId,
       planId: data.planId,
-      stripeCheckoutSessionId: data.stripeCheckoutSessionId,
       amount: data.amount,
       currency: data.currency,
       purpose: data.purpose ?? "NEW_SUBSCRIPTION",
@@ -24,12 +22,25 @@ export const createPayment = async (data: {
   });
 };
 
-export const markPaymentReviewRequired = async (
-  paymentId: string,
-  paymentIntentId?: string
-) => {
-  return prisma.payment.update({
-    where: { id: paymentId },
+export const updatePaymentCheckoutSessionId = async (paymentId: string, sessionId: string) => {
+  return prisma.payment.updateMany({
+    where: {
+      id: paymentId,
+      stripeCheckoutSessionId: null,
+      status: "PENDING",
+    },
+    data: {
+      stripeCheckoutSessionId: sessionId,
+    },
+  });
+};
+
+export const markPaymentReviewRequired = async (paymentId: string, paymentIntentId?: string) => {
+  return prisma.payment.updateMany({
+    where: {
+      id: paymentId,
+      status: "PENDING",
+    },
     data: {
       status: "REVIEW_REQUIRED",
       ...(paymentIntentId && {
@@ -43,6 +54,19 @@ export const findPaymentByCheckoutSessionId = async (sessionId: string) => {
   return prisma.payment.findUnique({
     where: {
       stripeCheckoutSessionId: sessionId,
+    },
+    include: {
+      company: true,
+      plan: true,
+      subscription: true,
+    },
+  });
+};
+
+export const findPaymentById = async (paymentId: string) => {
+  return prisma.payment.findUnique({
+    where: {
+      id: paymentId,
     },
     include: {
       company: true,
@@ -115,9 +139,7 @@ export const findCompanyPayments = async (companyId: string) => {
   });
 };
 
-export const findPaymentByCheckoutSessionIdForUpdate = async (
-  sessionId: string,
-) => {
+export const findPaymentByCheckoutSessionIdForUpdate = async (sessionId: string) => {
   return prisma.payment.findUnique({
     where: { stripeCheckoutSessionId: sessionId },
   });
@@ -137,13 +159,13 @@ export const markPaymentExpiredBySessionId = async (sessionId: string) => {
   });
 };
 
-
-export const findPendingRenewalPayment = async (renewalForSubscriptionId: string) =>
-  prisma.payment.findFirst({
+export const findPendingRenewalPayment = async (renewalForSubscriptionId: string) => prisma.payment.findFirst({
     where: {
       renewalForSubscriptionId,
       purpose: "RENEWAL",
-      status: "PENDING",
+      status: {
+        in: ["PENDING", "REVIEW_REQUIRED"],
+      },
     },
     orderBy: {
       createdAt: "desc",
@@ -191,15 +213,14 @@ export const claimReviewRequiredPayment = async (paymentId: string) => {
   });
 };
 
-export const findPaymentById = async (paymentId: string) => {
-  return prisma.payment.findUnique({
+export const markPaymentFailedById = async (paymentId: string) => {
+  return prisma.payment.updateMany({
     where: {
       id: paymentId,
+      status: "PENDING",
     },
-    include: {
-      company: true,
-      plan: true,
-      subscription: true,
+    data: {
+      status: "FAILED",
     },
   });
 };

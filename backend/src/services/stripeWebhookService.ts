@@ -1,6 +1,6 @@
 import type Stripe from "stripe";
 import { prisma } from "../config/database.js";
-import {findPaymentByCheckoutSessionId, markPendingPaymentReviewRequired} from "../repositories/paymentRepository.js";
+import {findPaymentByCheckoutSessionId, findPaymentById, markPendingPaymentReviewRequired} from "../repositories/paymentRepository.js";
 import { findActivePlanById } from "../repositories/planRepository.js";
 
 interface CheckoutProcessingOptions {
@@ -12,30 +12,41 @@ export const handleCheckoutSessionCompleted = async (session: Stripe.Checkout.Se
   if (session.payment_status !== "paid") {
     return;
   }
-  const payment = await findPaymentByCheckoutSessionId(session.id);
+  const metadata = session.metadata;
+  let payment = await findPaymentByCheckoutSessionId(session.id);
+  if (!payment && metadata?.paymentId) {
+    payment = await findPaymentById(metadata.paymentId);
+  }
   if (!payment) {
     throw new Error(`Payment record not found for session ${session.id}`);
   }
+  if (payment.stripeCheckoutSessionId && payment.stripeCheckoutSessionId !== session.id) {
+    throw new Error(`Payment ${payment.id} is already linked to another Checkout Session`);
+  }
+  if (metadata?.paymentId && metadata.paymentId !== payment.id) {
+    throw new Error("Checkout Session payment ID does not match payment");
+  }
   if (payment.status === "SUCCESS") {
+    if (payment.stripeCheckoutSessionId !== session.id) {
+      throw new Error(`Payment ${payment.id} is already successful with a different Checkout Session`);
+    }
     return;
   }
   if (payment.status === "REVIEW_REQUIRED" && !options.allowReviewRequired) {
-    throw new Error(`Payment ${payment.id} requires review before webhook processing can continue`);
+    throw new Error(`Payment ${payment.id} requires review before it can be processed`);
   }
   if (payment.status !== "PENDING" && payment.status !== "REVIEW_REQUIRED") {
     throw new Error(`Payment ${payment.id} cannot be processed from status ${payment.status}`);
   }
-  if (payment.status === "REVIEW_REQUIRED" && !options.allowReviewRequired) {
-    throw new Error(`Payment ${payment.id} requires manual review`);
-  }
-  const metadata = session.metadata;
 
-  if (metadata?.companyId !== payment.companyId || metadata?.planId !== payment.planId ||
-  (metadata?.purpose && metadata.purpose !== payment.purpose) || (payment.purpose === "RENEWAL" &&
-    metadata?.renewalForSubscriptionId !== payment.renewalForSubscriptionId) || 
-  (payment.purpose === "PLAN_CHANGE" && metadata?.planChangeForSubscriptionId !== payment.planChangeForSubscriptionId)) {
-  throw new Error("Checkout Session metadata does not match payment");
-}
+  // const metadata = session.metadata;
+
+  if (metadata?.paymentId !== payment.id || metadata?.companyId !== payment.companyId || metadata?.planId !== payment.planId ||
+  metadata?.purpose !== payment.purpose || (payment.purpose === "RENEWAL" && metadata?.renewalForSubscriptionId !== payment.renewalForSubscriptionId) ||
+  (payment.purpose === "PLAN_CHANGE" && metadata?.planChangeForSubscriptionId !== payment.planChangeForSubscriptionId)
+  ) {
+    throw new Error("Checkout Session metadata does not match payment");
+  }
   const plan = await findActivePlanById(payment.planId);
   if (!plan) {
     throw new Error("The purchased plan is no longer active");
@@ -59,6 +70,7 @@ export const handleCheckoutSessionCompleted = async (session: Stripe.Checkout.Se
         data: {
           status: "SUCCESS",
           paidAt: now,
+          stripeCheckoutSessionId: session.id,
           ...(paymentIntentId && {
             stripePaymentIntentId: paymentIntentId,
           }),
@@ -66,7 +78,17 @@ export const handleCheckoutSessionCompleted = async (session: Stripe.Checkout.Se
       });
       // Another process has already claimed or processed this payment.
       if (claimedPayment.count === 0) {
-        return;
+        const latestPayment = await tx.payment.findUnique({
+          where: {
+            id: payment.id,
+          },
+        });      
+        if (latestPayment?.status === "SUCCESS") {
+          // Another webhook or process already completed this payment.
+          return;
+        }      
+        throw new Error(`Payment ${payment.id} could not be claimed. Current status: ${latestPayment?.status ?? "NOT_FOUND"}`,
+        );
       }
       let startDate = now;
       if (payment.purpose === "RENEWAL") {
@@ -86,14 +108,19 @@ export const handleCheckoutSessionCompleted = async (session: Stripe.Checkout.Se
         if (!currentSubscription.endDate) {
           throw new Error("Permanent Free subscriptions cannot use the paid renewal flow. Use plan upgrade checkout instead.");
         }
+        // const existingRenewal = await tx.subscription.findFirst({
+        //   where: {
+        //     companyId: payment.companyId,
+        //     renewedFromSubscriptionId: currentSubscription.id,
+        //     status: {
+        //       in: ["ACTIVE", "TRIAL"],
+        //     },
+        //   },
+        // });
         const existingRenewal = await tx.subscription.findFirst({
-          where: {
-            companyId: payment.companyId,
-            startDate: {
-              gte: currentSubscription.endDate,
-            },
-            status: { in: ["ACTIVE", "TRIAL"] },
-          },
+           where: {
+             renewedFromSubscriptionId: currentSubscription.id,
+           },
         });
         if (existingRenewal) {
           throw new Error("A renewal period already exists for this subscription. Payment requires review.");

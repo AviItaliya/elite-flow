@@ -309,7 +309,7 @@ model Payment {
   companyId                   String
   planId                      String
   subscriptionId              String?
-  stripeCheckoutSessionId     String         @unique
+  stripeCheckoutSessionId     String?        @unique
   stripePaymentIntentId       String?        @unique
   amount                      Decimal        @db.Decimal(10, 2)
   currency                    String         @default("inr")
