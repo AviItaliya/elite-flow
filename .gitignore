@@ -1,2 +1,4 @@
 Policy.md
-*.zip
+temp_auto_push.bat
+*.zip.gitignore
+branch_structure.json
