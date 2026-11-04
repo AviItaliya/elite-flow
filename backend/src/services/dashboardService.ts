@@ -1,28 +1,7 @@
-import {
-  getProjectStats,
-  getTaskStats,
-  getRecentProjects,
-  getRecentTasks,
-
-  getSuperadminStats,
-  getSubscriptionStats,
-  getRecentCompanies,
-
-  getUserTaskStats,
-  getUserProjectStats,
-  getUserRecentTasks,
-  getUserRecentComments,
-  getUserRecentActivity,
-  getUserProjects,
-
-  getCompanyUserStats,
-  getRecentUsers,
-  getRecentComments,
-  getRecentTaskActivity,
-
-  getAdminTaskAnalytics,
-  getAdminProjectAnalytics,
-} from "../repositories/dashboardRepository.js";
+import {getProjectStats, getTaskStats, getRecentProjects, getRecentTasks, getSuperadminStats, getSubscriptionStats, 
+  getRecentCompanies, getUserTaskStats, getUserProjectStats, getUserRecentTasks, getUserRecentComments, getUserRecentActivity,
+  getUserProjects, getCompanyUserStats, getRecentUsers, getRecentComments, getRecentTaskActivity, getAdminTaskAnalytics,
+  getAdminProjectAnalytics} from "../repositories/dashboardRepository.js";
 
 import { prisma } from "../config/database.js";
 
@@ -53,6 +32,9 @@ export const getAdminDashboard = async (companyId: string) => {
     projectAnalytics,
     recentProjects,
     recentTasks,
+    recentUsers,
+    recentComments,
+    recentTaskActivity,
   ] = await Promise.all([
     getCompanyUserStats(companyId),
     getProjectStats(companyId),
@@ -61,6 +43,9 @@ export const getAdminDashboard = async (companyId: string) => {
     getAdminProjectAnalytics(companyId),
     getRecentProjects(companyId),
     getRecentTasks(companyId),
+    getRecentUsers(companyId),
+    getRecentComments(companyId),
+    getRecentTaskActivity(companyId),
   ]);
 
   return {
@@ -78,6 +63,9 @@ export const getAdminDashboard = async (companyId: string) => {
 
     recentProjects,
     recentTasks,
+    recentUsers,
+    recentComments,
+    recentTaskActivity,
   };
 };
 

@@ -1,5 +1,6 @@
 import {addProjectMember, countCompanyProjects, createProject, deleteProject, findProjectByIdAndCompany, findProjectMember, findProjectMembers, findProjectsByCompany, ProjectListFilters, removeProjectMember, updateProject, updateProjectStatus} from "../repositories/projectRepository.js";
 import { findUserByIdAndCompany } from "../repositories/userRepository.js";
+import { generateTaskCodePrefix } from "../utils/taskCode.js";
 import type {CreateProjectInput, UpdateProjectInput, UpdateProjectStatusInput} from "../validators/projectValidator.js";
 import { requireActiveSubscription } from "./subscriptionService.js";
 
@@ -24,13 +25,14 @@ export const createCompanyProject = async (companyId: string, data: CreateProjec
   if (data.startDate && data.endDate && data.endDate < data.startDate) {
     throw new Error("End date cannot be before start date");
   }
-  return createProject({
-    companyId,
-    name: data.name,
-    description: data.description,
-    startDate: data.startDate,
-    endDate: data.endDate,
-  });
+return createProject({
+  companyId,
+  name: data.name,
+  description: data.description,
+  startDate: data.startDate,
+  endDate: data.endDate,
+  taskCodePrefix: generateTaskCodePrefix(data.name),
+});
 };
 
 export const updateCompanyProject = async (projectId: string, companyId: string, data: UpdateProjectInput) => {
