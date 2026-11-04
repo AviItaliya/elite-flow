@@ -1,7 +1,17 @@
+
 import { prisma } from "../config/database.js";
 
-type TaskStatus = "TODO" | "IN_PROGRESS" | "REVIEW" | "COMPLETED";
-type TaskPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+export type TaskStatus =
+  | "TODO"
+  | "IN_PROGRESS"
+  | "DONE"
+  | "TESTING"
+  | "QA_VERIFIED"
+  | "RE_OPEN"
+  | "DEPLOYMENT";
+
+export type TaskPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+
 type TaskSortField = "createdAt" | "updatedAt" | "title" | "dueDate";
 type TaskSortOrder = "asc" | "desc";
 
@@ -15,8 +25,20 @@ export interface TaskListFilters {
   sortOrder: TaskSortOrder;
 }
 
-export const findTasksByProject = async (projectId: string, filters: TaskListFilters) => {
-  const {page, limit, search, status, priority, sortBy, sortOrder} = filters;
+export const findTasksByProject = async (
+  projectId: string,
+  filters: TaskListFilters,
+) => {
+  const {
+    page,
+    limit,
+    search,
+    status,
+    priority,
+    sortBy,
+    sortOrder,
+  } = filters;
+
   const where = {
     projectId,
     ...(status ? { status } : {}),
@@ -40,6 +62,7 @@ export const findTasksByProject = async (projectId: string, filters: TaskListFil
         }
       : {}),
   };
+
   const [tasks, total] = await prisma.$transaction([
     prisma.task.findMany({
       where,
@@ -59,13 +82,24 @@ export const findTasksByProject = async (projectId: string, filters: TaskListFil
             email: true,
           },
         },
+        reporter: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+          },
+        },
       },
-      orderBy: {[sortBy]: sortOrder},
+      orderBy: {
+        [sortBy]: sortOrder,
+      },
       skip: (page - 1) * limit,
       take: limit,
     }),
-    prisma.task.count({where}),
+    prisma.task.count({ where }),
   ]);
+
   return {
     tasks,
     pagination: {
@@ -83,7 +117,14 @@ export const findTaskById = async (taskId: string) => {
       id: taskId,
     },
     include: {
-      project: true,
+      project: {
+        select: {
+          id: true,
+          companyId: true,
+          name: true,
+          status: true,
+        },
+      },
       assignee: {
         select: {
           id: true,
@@ -91,6 +132,14 @@ export const findTaskById = async (taskId: string) => {
           email: true,
           role: true,
           status: true,
+        },
+      },
+      reporter: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
         },
       },
       creator: {
@@ -136,25 +185,45 @@ export const createTask = async (data: {
   projectId: string;
   createdBy: string;
   assignedTo?: string;
+  reportedTo?: string;
   title: string;
   description?: string;
-  priority?:
-    | "LOW"
-    | "MEDIUM"
-    | "HIGH"
-    | "URGENT";
+  priority?: TaskPriority;
   dueDate?: Date;
 }) => {
-  return prisma.task.create({
-    data: {
-      projectId: data.projectId,
-      createdBy: data.createdBy,
-      assignedTo: data.assignedTo,
-      title: data.title,
-      description: data.description,
-      priority: data.priority ?? "MEDIUM",
-      dueDate: data.dueDate,
-    },
+  return prisma.$transaction(async (tx) => {
+    const project = await tx.project.update({
+      where: {
+        id: data.projectId,
+      },
+      data: {
+        taskSequence: {
+          increment: 1,
+        },
+      },
+      select: {
+        taskCodePrefix: true,
+        taskSequence: true,
+      },
+    });
+
+    const taskCode = `${project.taskCodePrefix}-${String(
+      project.taskSequence,
+    ).padStart(2, "0")}`;
+
+    return tx.task.create({
+      data: {
+        taskCode,
+        projectId: data.projectId,
+        createdBy: data.createdBy,
+        assignedTo: data.assignedTo,
+        reportedTo: data.reportedTo,
+        title: data.title,
+        description: data.description,
+        priority: data.priority ?? "MEDIUM",
+        dueDate: data.dueDate,
+      },
+    });
   });
 };
 
@@ -162,15 +231,12 @@ export const updateTask = async (
   taskId: string,
   data: {
     title?: string;
-    description?: string;
+    description?: string | null;
     assignedTo?: string | null;
-    priority?:
-      | "LOW"
-      | "MEDIUM"
-      | "HIGH"
-      | "URGENT";
+    reportedTo?: string | null;
+    priority?: TaskPriority;
     dueDate?: Date | null;
-  }
+  },
 ) => {
   return prisma.task.update({
     where: {
@@ -182,11 +248,7 @@ export const updateTask = async (
 
 export const updateTaskStatus = async (
   taskId: string,
-  status:
-    | "TODO"
-    | "IN_PROGRESS"
-    | "REVIEW"
-    | "COMPLETED"
+  status: TaskStatus,
 ) => {
   return prisma.task.update({
     where: {

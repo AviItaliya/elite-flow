@@ -1,6 +1,6 @@
 import type Stripe from "stripe";
 import { prisma } from "../config/database.js";
-import {findPaymentByCheckoutSessionId, findPaymentById, markPendingPaymentReviewRequired} from "../repositories/paymentRepository.js";
+import {findPaymentByCheckoutSessionId, findPaymentById, markPaymentReviewRequired} from "../repositories/paymentRepository.js";
 import { findActivePlanById } from "../repositories/planRepository.js";
 
 interface CheckoutProcessingOptions {
@@ -13,12 +13,18 @@ export const handleCheckoutSessionCompleted = async (session: Stripe.Checkout.Se
     return;
   }
   const metadata = session.metadata;
+
   let payment = await findPaymentByCheckoutSessionId(session.id);
+  
   if (!payment && metadata?.paymentId) {
     payment = await findPaymentById(metadata.paymentId);
   }
   if (!payment) {
-    throw new Error(`Payment record not found for session ${session.id}`);
+    if (!metadata?.paymentId) {
+      console.warn("Ignoring Checkout Session without EliteFlow payment metadata:", session.id);
+      return;
+    }
+    throw new Error(`Payment record not found for session ${session.id}, paymentId ${metadata.paymentId}`);
   }
   if (payment.stripeCheckoutSessionId && payment.stripeCheckoutSessionId !== session.id) {
     throw new Error(`Payment ${payment.id} is already linked to another Checkout Session`);
@@ -38,9 +44,6 @@ export const handleCheckoutSessionCompleted = async (session: Stripe.Checkout.Se
   if (payment.status !== "PENDING" && payment.status !== "REVIEW_REQUIRED") {
     throw new Error(`Payment ${payment.id} cannot be processed from status ${payment.status}`);
   }
-
-  // const metadata = session.metadata;
-
   if (metadata?.paymentId !== payment.id || metadata?.companyId !== payment.companyId || metadata?.planId !== payment.planId ||
   metadata?.purpose !== payment.purpose || (payment.purpose === "RENEWAL" && metadata?.renewalForSubscriptionId !== payment.renewalForSubscriptionId) ||
   (payment.purpose === "PLAN_CHANGE" && metadata?.planChangeForSubscriptionId !== payment.planChangeForSubscriptionId)
@@ -60,8 +63,6 @@ export const handleCheckoutSessionCompleted = async (session: Stripe.Checkout.Se
   const paymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id;
   try {
     await prisma.$transaction(async (tx) => {
-      // Atomically claim the payment. Recovery can claim REVIEW_REQUIRED;
-      // normal webhook processing can claim only PENDING.
       const claimedPayment = await tx.payment.updateMany({
         where: {
           id: payment.id,
@@ -148,14 +149,21 @@ export const handleCheckoutSessionCompleted = async (session: Stripe.Checkout.Se
           throw new Error("The company is already subscribed to the requested plan. Payment requires review.");
         }
         // Preserve the previous subscription as history.
-        await tx.subscription.update({
+        await tx.subscription.updateMany({
           where: {
-            id: currentSubscription.id,
+            companyId: payment.companyId,
+            status: {
+              in: ["ACTIVE", "TRIAL"],
+            },
+            OR: [
+              { endDate: null },
+              { endDate: { gt: now } },
+            ],
           },
           data: {
             status: "CANCELLED",
           },
-        });
+        });        
         // The new plan starts immediately after successful payment.
         startDate = now;
       } else {
@@ -238,10 +246,7 @@ export const handleCheckoutSessionCompleted = async (session: Stripe.Checkout.Se
     });
   } catch (error) {
     try {
-      // A failed transaction rolls back its SUCCESS status update.
-      // This helper changes only PENDING payments, so it won't overwrite
-      // the REVIEW_REQUIRED status of a recovery attempt.
-      await markPendingPaymentReviewRequired(
+      await markPaymentReviewRequired(
         payment.id,
         paymentIntentId,
       );

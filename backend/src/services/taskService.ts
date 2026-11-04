@@ -1,4 +1,5 @@
-import {createTask, deleteTask, findTaskById, findTasksByProject, TaskListFilters, updateTask, updateTaskStatus} from "../repositories/taskRepository.js";
+import {createTask, deleteTask, findTaskById, findTasksByProject, updateTask, updateTaskStatus} from "../repositories/taskRepository.js";
+import type { TaskListFilters } from "../repositories/taskRepository.js";
 import {findProjectByIdAndCompany, findProjectMember} from "../repositories/projectRepository.js";
 import {findUserByIdAndCompany, findUsersByCompany} from "../repositories/userRepository.js";
 import type {CreateTaskInput, UpdateTaskInput, UpdateTaskStatusInput} from "../validators/taskValidator.js";
@@ -9,14 +10,64 @@ import { createNotification } from "./notificationService.js";
 import { logAuditEvent } from "./auditLogService.js";
 import { sendPushNotification } from "./pushNotificationService.js";
 
-// Record task audit events without interrupting the main task operation.
-const recordTaskAudit = async (
-  actorId: string,
-  companyId: string,
-  action: string,
-  taskId: string,
-  details?: Record<string, unknown>,
-) => {
+export class TaskServiceError extends Error {
+  constructor(
+    message: string,
+    public readonly statusCode: number,
+  ) {
+    super(message);
+    this.name = "TaskServiceError";
+  }
+}
+
+const getActiveCompanyUser = async (userId: string, companyId: string) => {
+  const user = await findUserByIdAndCompany(userId, companyId);
+
+  if (!user || user.status !== "ACTIVE") {
+    throw new TaskServiceError("User not found or inactive", 403);
+  }
+
+  return user;
+};
+
+const requireCompanyAdmin = async (userId: string, companyId: string) => {
+  const user = await getActiveCompanyUser(userId, companyId);
+
+  if (user.role !== "ADMIN") {
+    throw new TaskServiceError(
+      "Only administrators can perform this action",
+      403,
+    );
+  }
+
+  return user;
+};
+
+const ensureProjectAccess = async (projectId: string, userId: string, companyId: string) => {
+  const user = await getActiveCompanyUser(userId, companyId);
+  if (user.role === "ADMIN") {
+    return user;
+  }
+  if (user.role !== "USER") {
+    throw new TaskServiceError("You do not have permission to access this project", 403);
+  }
+  const membership = await findProjectMember(projectId, userId);
+  if (!membership) {
+    throw new TaskServiceError("You do not have access to this project", 403);
+  }
+  return user;
+};
+
+const getAccessibleTask = async (taskId: string, companyId: string, userId: string) => {
+  const task = await findTaskById(taskId);
+  if (!task || task.project.companyId !== companyId) {
+    throw new TaskServiceError("Task not found", 404);
+  }
+  await ensureProjectAccess(task.projectId, userId, companyId);
+  return task;
+};
+
+const recordTaskAudit = async (actorId: string, companyId: string, action: string, taskId: string, details?: Record<string, unknown>) => {
   try {
     await logAuditEvent({
       actorId,
@@ -31,13 +82,7 @@ const recordTaskAudit = async (
   }
 };
 
-// Create an in-app notification and attempt an FCM push independently.
-const notifyTaskAssignee = async (
-  userId: string,
-  title: string,
-  message: string,
-  taskId: string,
-) => {
+const notifyTaskAssignee = async (userId: string, title: string, message: string, taskId: string) => {
   try {
     await createNotification({
       userId,
@@ -66,73 +111,76 @@ const notifyTaskAssignee = async (
   }
 };
 
-// Get all tasks belonging to a project.
-export const getProjectTasks = async (projectId: string, companyId: string, filters: TaskListFilters) => {
+export const getProjectTasks = async (projectId: string, companyId: string, userId: string, filters: TaskListFilters) => {
   const project = await findProjectByIdAndCompany(projectId, companyId);
   if (!project) {
-    throw new Error("Project not found");
+    throw new TaskServiceError("Project not found", 404);
   }
+  await ensureProjectAccess(projectId, userId, companyId);
   return findTasksByProject(projectId, filters);
 };
 
-// Get a single task belonging to the authenticated user's company.
-export const getCompanyTaskById = async (taskId: string, companyId: string) => {
-  const task = await findTaskById(taskId);
-  if (!task || task.project.companyId !== companyId) {
-    throw new Error("Task not found");
-  }
-  return task;
+export const getCompanyTaskById = async (taskId: string, companyId: string, userId: string) => {
+  return getAccessibleTask(taskId, companyId, userId);
 };
 
-// Create a task and notify its assignee when applicable.
 export const createProjectTask = async (companyId: string, createdBy: string, data: CreateTaskInput) => {
-  // Validate the project.
+  await requireCompanyAdmin(createdBy, companyId);
   const project = await findProjectByIdAndCompany(data.projectId, companyId);
   if (!project) {
-    throw new Error("Project not found");
+    throw new TaskServiceError("Project not found", 404);
   }
+  try {
   await requireActiveSubscription(companyId);
+  } catch (error) {
+    throw new TaskServiceError(error instanceof Error ? error.message : "Subscription verification failed", 403);
+  }
   if (project.status === "CANCELLED") {
-    throw new Error("Cannot create a task in a cancelled project");
+    throw new TaskServiceError("Cannot create a task in a cancelled project", 400);
   }
   if (data.dueDate && data.dueDate < new Date()) {
-    throw new Error("Due date cannot be in the past");
+    throw new TaskServiceError("Due date cannot be in the past", 400);
   }
-
-  // Validate the assignee.
   if (data.assignedTo) {
-    const user = await findUserByIdAndCompany(data.assignedTo, companyId);
-    if (!user) {
-      throw new Error("Assignee not found in your company");
+    const assignee = await findUserByIdAndCompany(data.assignedTo, companyId);
+    if (!assignee) {
+      throw new TaskServiceError("Assignee not found in your company", 400);
     }
-    if (user.status !== "ACTIVE") {
-      throw new Error("Inactive users cannot be assigned tasks");
+    if (assignee.status !== "ACTIVE") {
+      throw new TaskServiceError("Inactive users cannot be assigned tasks", 400);
     }
-    const member = await findProjectMember(data.projectId, data.assignedTo);
-    if (!member) {
-      throw new Error("Assignee must be a member of the project");
+    const membership = await findProjectMember(data.projectId, data.assignedTo);
+    if (!membership) {
+      throw new TaskServiceError("Assignee must be a member of the project", 400);
+    }
+  }
+  if (data.reportedTo) {
+    const reporter = await findUserByIdAndCompany(data.reportedTo, companyId);
+    if (!reporter || reporter.role !== "ADMIN") {
+      throw new TaskServiceError("Report To must be an administrator from your company", 400);
+    }
+    if (reporter.status !== "ACTIVE") {
+      throw new TaskServiceError("Inactive administrators cannot be selected as Report To", 400);
     }
   }
 
-  // Create the task.
   const task = await createTask({
     projectId: data.projectId,
     createdBy,
     assignedTo: data.assignedTo,
+    reportedTo: data.reportedTo,
     title: data.title,
     description: data.description,
     priority: data.priority,
     dueDate: data.dueDate,
   });
 
-  // Record task history.
   await createTaskHistory({
     taskId: task.id,
     userId: createdBy,
     action: "TASK_CREATED",
   });
 
-  // Record the audit event.
   await recordTaskAudit(
     createdBy,
     companyId,
@@ -145,50 +193,49 @@ export const createProjectTask = async (companyId: string, createdBy: string, da
     },
   );
 
-  // Notify the assignee, except when the creator assigned the task to themselves.
   if (task.assignedTo && task.assignedTo !== createdBy) {
-    await notifyTaskAssignee(task.assignedTo, "New Task Assigned", `You have been assigned a new task: ${task.title}`, task.id);
+    await notifyTaskAssignee(
+      task.assignedTo,
+      "New Task Assigned",
+      `You have been assigned a new task: ${task.title}`,
+      task.id,
+    );
   }
   return task;
 };
 
-// Update a task and track changes to its assignee, priority, and title.
-export const updateCompanyTask = async (
-  taskId: string,
-  companyId: string,
-  userId: string,
-  data: UpdateTaskInput,
-) => {
+export const updateCompanyTask = async (taskId: string, companyId: string, userId: string, data: UpdateTaskInput) => {
+  await requireCompanyAdmin(userId, companyId);
   const task = await findTaskById(taskId);
   if (!task || task.project.companyId !== companyId) {
-    throw new Error("Task not found");
+    throw new TaskServiceError("Task not found", 404);
   }
-
-  // Validate the due date.
   if (data.dueDate && data.dueDate < new Date()) {
-    throw new Error("Due date cannot be in the past");
+    throw new TaskServiceError("Due date cannot be in the past", 400);
   }
-
-  // Validate the new assignee.
   if (data.assignedTo) {
-    const user = await findUserByIdAndCompany(data.assignedTo, companyId);
-    if (!user) {
-      throw new Error("Assignee not found in your company");
+    const assignee = await findUserByIdAndCompany(data.assignedTo, companyId);
+    if (!assignee) {
+      throw new TaskServiceError("Assignee not found in your company", 400);
     }
-    if (user.status !== "ACTIVE") {
-      throw new Error("Inactive users cannot be assigned tasks");
+    if (assignee.status !== "ACTIVE") {
+      throw new TaskServiceError("Inactive users cannot be assigned tasks", 400);
     }
-
-    const member = await findProjectMember(task.projectId, data.assignedTo);
-    if (!member) {
-      throw new Error("Assignee must be a member of the project");
+    const membership = await findProjectMember(task.projectId, data.assignedTo);
+    if (!membership) {
+      throw new TaskServiceError("Assignee must be a member of the project", 400);
     }
   }
-
-  // Update the task.
+  if (data.reportedTo) {
+    const reporter = await findUserByIdAndCompany(data.reportedTo, companyId);
+    if (!reporter || reporter.role !== "ADMIN") {
+      throw new TaskServiceError("Report To must be an administrator from your company", 400);
+    }
+    if (reporter.status !== "ACTIVE") {
+      throw new TaskServiceError("Inactive administrators cannot be selected as Report To", 400);
+    }
+  }
   const updatedTask = await updateTask(taskId, data);
-
-  // Record the audit event.
   await recordTaskAudit(
     userId,
     companyId,
@@ -199,7 +246,6 @@ export const updateCompanyTask = async (
     },
   );
 
-  // Track priority changes.
   if (data.priority !== undefined && data.priority !== task.priority) {
     await createTaskHistory({
       taskId,
@@ -210,7 +256,6 @@ export const updateCompanyTask = async (
     });
   }
 
-  // Track assignee changes.
   if (data.assignedTo !== undefined && data.assignedTo !== task.assignedTo) {
     await createTaskHistory({
       taskId,
@@ -231,7 +276,6 @@ export const updateCompanyTask = async (
       },
     );
 
-    // Notify the new assignee, but do not notify the acting user.
     if (data.assignedTo && data.assignedTo !== userId) {
       await notifyTaskAssignee(
         data.assignedTo,
@@ -242,7 +286,16 @@ export const updateCompanyTask = async (
     }
   }
 
-  // Track title changes.
+  if (data.reportedTo !== undefined && data.reportedTo !== task.reportedTo) {
+    await createTaskHistory({
+      taskId,
+      userId,
+      action: "REPORTED_TO_CHANGED",
+      oldValue: task.reportedTo ?? "UNASSIGNED",
+      newValue: data.reportedTo ?? "UNASSIGNED",
+    });
+  }
+
   if (data.title !== undefined && data.title !== task.title) {
     await createTaskHistory({
       taskId,
@@ -256,35 +309,20 @@ export const updateCompanyTask = async (
   return updatedTask;
 };
 
-// Change a task's status and notify active company administrators.
-export const changeTaskStatus = async (
-  taskId: string,
-  companyId: string,
-  userId: string,
-  data: UpdateTaskStatusInput,
-) => {
-  const task = await findTaskById(taskId);
-
-  if (!task || task.project.companyId !== companyId) {
-    throw new Error("Task not found");
-  }
-
+export const changeTaskStatus = async (taskId: string, companyId: string, userId: string, data: UpdateTaskStatusInput) => {
+  const task = await getAccessibleTask(taskId, companyId, userId);
   if (task.status === data.status) {
-    throw new Error(`Task is already ${data.status}`);
+    throw new TaskServiceError(`Task is already ${data.status}`, 400);
   }
-
   const updatedTask = await updateTaskStatus(taskId, data.status);
-
-  // Record task history.
   await createTaskHistory({
     taskId,
     userId,
     action: "STATUS_CHANGED",
     oldValue: task.status,
-    newValue: data.status,
+    newValue: updatedTask.status,
   });
 
-  // Record the audit event.
   await recordTaskAudit(
     userId,
     companyId,
@@ -296,17 +334,15 @@ export const changeTaskStatus = async (
     },
   );
 
-  // Notify active administrators of the status change.
   try {
     const updatedBy = await findUserByIdAndCompany(userId, companyId);
-    const { users: companyUsers } = await findUsersByCompany(companyId,
-  {
-    page: 1,
-    limit: 100,
-    sortBy: "createdAt",
-    sortOrder: "desc",
-  }
-);
+
+    const { users: companyUsers } = await findUsersByCompany(companyId, {
+      page: 1,
+      limit: 100,
+      sortBy: "createdAt",
+      sortOrder: "desc",
+    });
 
     const admins = companyUsers.filter(
       (user) =>
@@ -335,24 +371,16 @@ export const changeTaskStatus = async (
   } catch (error) {
     console.error("Failed to process task status change notifications:", error);
   }
-
   return updatedTask;
 };
 
-// Delete a task belonging to the specified company.
-export const deleteCompanyTask = async (
-  userId: string,
-  taskId: string,
-  companyId: string,
-) => {
+export const deleteCompanyTask = async (userId: string, taskId: string, companyId: string) => {
+  await requireCompanyAdmin(userId, companyId);
   const task = await findTaskById(taskId);
-
   if (!task || task.project.companyId !== companyId) {
-    throw new Error("Task not found");
+    throw new TaskServiceError("Task not found", 404);
   }
-
   const deletedTask = await deleteTask(taskId);
-
   await recordTaskAudit(
     userId,
     companyId,
@@ -363,20 +391,10 @@ export const deleteCompanyTask = async (
       projectId: task.projectId,
     },
   );
-
   return deletedTask;
 };
 
-// Get task history after verifying company access.
-export const getCompanyTaskHistory = async (
-  taskId: string,
-  companyId: string,
-) => {
-  const task = await findTaskById(taskId);
-
-  if (!task || task.project.companyId !== companyId) {
-    throw new Error("Task not found");
-  }
-
+export const getCompanyTaskHistory = async (taskId: string, companyId: string, userId: string) => {
+  await getAccessibleTask(taskId, companyId, userId);
   return findTaskHistory(taskId);
 };

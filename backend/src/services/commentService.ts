@@ -1,36 +1,55 @@
 import { NotificationType } from "../generated/prisma/enums.js";
 import { CommentListFilters, createComment, deleteComment, findCommentById, findCommentsByTask, updateComment } from "../repositories/commentRepository.js";
-import { findTaskById } from "../repositories/taskRepository.js"
+import { findTaskById } from "../repositories/taskRepository.js";
 import { findUserByIdAndCompany } from "../repositories/userRepository.js";
+import { findProjectMember } from "../repositories/projectRepository.js";
 import { createNotification } from "./notificationService.js";
 
-export const getTaskComments = async (taskId: string, companyId: string, filters: CommentListFilters) => {
+const getActiveCompanyUser = async (userId: string, companyId: string) => {
+  const user = await findUserByIdAndCompany(userId, companyId);
+  if (!user || user.status !== "ACTIVE") {
+    throw new Error("User not found or inactive");
+  }
+  return user;
+};
+
+const getAccessibleTask = async (taskId: string, userId: string, companyId: string) => {
   const task = await findTaskById(taskId);
   if (!task || task.project.companyId !== companyId) {
     throw new Error("Task not found");
   }
+  const user = await getActiveCompanyUser(userId, companyId);
+  if (user.role === "ADMIN") {
+    return task;
+  }
+  if (user.role !== "USER") {
+    throw new Error("You do not have permission to access this task");
+  }
+  const projectMember = await findProjectMember(task.projectId, userId);
+  if (!projectMember) {
+    throw new Error("You do not have access to this task");
+  }
+  return task;
+};
+
+export const getTaskComments = async (taskId: string, companyId: string, userId: string, filters: CommentListFilters) => {
+  await getAccessibleTask(taskId, userId, companyId);
   return findCommentsByTask(taskId, filters);
 };
 
-export const createTaskComment = async(taskId: string, userId: string, companyId: string, content: string) => {
-  const task = await findTaskById(taskId);
-  if(!task) {
-    throw new Error("Task not found");
-  }
-  if(task.project.companyId !== companyId) {
-    throw new Error("Task not found");
-  }
+export const createTaskComment = async (taskId: string, userId: string, companyId: string, content: string) => {
+  const task = await getAccessibleTask(taskId, userId, companyId);
   const comment = await createComment({taskId, userId, content});
-  if(task.assignedTo && task.assignedTo !== userId) {
+  if (task.assignedTo && task.assignedTo !== userId) {
     try {
       const commenter = await findUserByIdAndCompany(userId, companyId);
-      if(commenter) {
+      if (commenter) {
         await createNotification({
           userId: task.assignedTo,
           type: NotificationType.TASK_COMMENTED,
           title: "New Comment on Your Task",
           message: `${commenter.name} commented on task "${task.title}".`,
-          link: `/tasks/${task.id}`
+          link: `/tasks/${task.id}`,
         });
       }
     } catch (error) {
@@ -40,29 +59,25 @@ export const createTaskComment = async(taskId: string, userId: string, companyId
   return comment;
 };
 
-export const updateTaskComment = async(commentId: string, userId: string, companyId: string, content: string) => {
+export const updateTaskComment = async (commentId: string, userId: string, companyId: string, content: string) => {
+  await getActiveCompanyUser(userId, companyId);
   const comment = await findCommentById(commentId);
-  if(!comment) {
+  if (!comment || comment.task.project.companyId !== companyId) {
     throw new Error("Comment not found");
   }
-  if(comment.task.project.companyId !== companyId) {
-    throw new Error("Comment not found");
-  }
-  if(comment.user.id !== userId) {
+  if (comment.user.id !== userId) {
     throw new Error("You can only edit your own comments");
   }
   return updateComment(commentId, content);
 };
 
-export const deleteTaskComment = async(commentId: string, userId: string, companyId: string) => {
+export const deleteTaskComment = async (commentId: string, userId: string, companyId: string) => {
+  await getActiveCompanyUser(userId, companyId);
   const comment = await findCommentById(commentId);
-  if(!comment) {
+  if (!comment || comment.task.project.companyId !== companyId) {
     throw new Error("Comment not found");
   }
-  if(comment.task.project.companyId !== companyId) {
-    throw new Error("Comment not found");
-  }
-  if(comment.user.id !== userId) {
+  if (comment.user.id !== userId) {
     throw new Error("You can only delete your own comments");
   }
   return deleteComment(commentId);

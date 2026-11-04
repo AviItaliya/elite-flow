@@ -1,13 +1,7 @@
 import { prisma } from "../config/database.js";
 
 export const getCompanyUserStats = async (companyId: string) => {
-  const [
-    total,
-    active,
-    inactive,
-    admins,
-    normalUsers,
-  ] = await Promise.all([
+  const [total, active, inactive, admins, normalUsers] = await Promise.all([
     prisma.user.count({
       where: {
         companyId,
@@ -67,14 +61,7 @@ export const getCompanyUserStats = async (companyId: string) => {
 };
 
 export const getProjectStats = async (companyId: string) => {
-  const [
-    total,
-    planning,
-    active,
-    completed,
-    onHold,
-    cancelled,
-  ] = await Promise.all([
+  const [total, planning, active, completed, onHold, cancelled] = await Promise.all([
     prisma.project.count({
       where: { companyId },
     }),
@@ -126,108 +113,61 @@ export const getProjectStats = async (companyId: string) => {
 };
 
 export const getTaskStats = async (companyId: string) => {
-  const [
-    total,
-    todo,
-    inProgress,
-    review,
-    completed,
-    low,
-    medium,
-    high,
-    urgent,
-    overdue,
-  ] = await Promise.all([
+  const [total, todo, inProgress, done, testing, qaVerified, reOpen, deployment, low, medium, high, urgent, overdue] = await Promise.all([
     prisma.task.count({
-      where: {
-        project: {
-          companyId,
-        },
-      },
+      where: { project: { companyId } },
+    }),
+
+    prisma.task.count({
+      where: { project: { companyId }, status: "TODO" },
+    }),
+
+    prisma.task.count({
+      where: { project: { companyId }, status: "IN_PROGRESS" },
+    }),
+
+    prisma.task.count({
+      where: { project: { companyId }, status: "DONE" },
+    }),
+
+    prisma.task.count({
+      where: { project: { companyId }, status: "TESTING" },
+    }),
+
+    prisma.task.count({
+      where: { project: { companyId }, status: "QA_VERIFIED" },
+    }),
+
+    prisma.task.count({
+      where: { project: { companyId }, status: "RE_OPEN" },
+    }),
+
+    prisma.task.count({
+      where: { project: { companyId }, status: "DEPLOYMENT" },
+    }),
+
+    prisma.task.count({
+      where: { project: { companyId }, priority: "LOW" },
+    }),
+
+    prisma.task.count({
+      where: { project: { companyId }, priority: "MEDIUM" },
+    }),
+
+    prisma.task.count({
+      where: { project: { companyId }, priority: "HIGH" },
+    }),
+
+    prisma.task.count({
+      where: { project: { companyId }, priority: "URGENT" },
     }),
 
     prisma.task.count({
       where: {
-        project: {
-          companyId,
-        },
-        status: "TODO",
-      },
-    }),
-
-    prisma.task.count({
-      where: {
-        project: {
-          companyId,
-        },
-        status: "IN_PROGRESS",
-      },
-    }),
-
-    prisma.task.count({
-      where: {
-        project: {
-          companyId,
-        },
-        status: "REVIEW",
-      },
-    }),
-
-    prisma.task.count({
-      where: {
-        project: {
-          companyId,
-        },
-        status: "COMPLETED",
-      },
-    }),
-
-    prisma.task.count({
-      where: {
-        project: {
-          companyId,
-        },
-        priority: "LOW",
-      },
-    }),
-
-    prisma.task.count({
-      where: {
-        project: {
-          companyId,
-        },
-        priority: "MEDIUM",
-      },
-    }),
-
-    prisma.task.count({
-      where: {
-        project: {
-          companyId,
-        },
-        priority: "HIGH",
-      },
-    }),
-
-    prisma.task.count({
-      where: {
-        project: {
-          companyId,
-        },
-        priority: "URGENT",
-      },
-    }),
-
-    prisma.task.count({
-      where: {
-        project: {
-          companyId,
-        },
-        dueDate: {
-          lt: new Date(),
-        },
+        project: { companyId },
+        dueDate: { lt: new Date() },
         status: {
-          not: "COMPLETED",
+          notIn: ["DONE", "QA_VERIFIED", "DEPLOYMENT"],
         },
       },
     }),
@@ -235,21 +175,21 @@ export const getTaskStats = async (companyId: string) => {
 
   return {
     total,
-
     status: {
       todo,
       inProgress,
-      review,
-      completed,
+      done,
+      testing,
+      qaVerified,
+      reOpen,
+      deployment,
     },
-
     priority: {
       low,
       medium,
       high,
       urgent,
     },
-
     overdue,
   };
 };
@@ -433,33 +373,19 @@ export const getRecentTaskActivity = async (companyId: string) => {
   });
 };
 
-export const getUserTaskStats = async (
-  userId: string,
-  companyId: string,
-) => {
-  const [
-    assigned,
-    todo,
-    inProgress,
-    review,
-    completed,
-    overdue,
-  ] = await Promise.all([
+export const getUserTaskStats = async (userId: string, companyId: string) => {
+  const [assigned, todo, inProgress, done, testing, qaVerified, reOpen, deployment, overdue] = await Promise.all([
     prisma.task.count({
       where: {
         assignedTo: userId,
-        project: {
-          companyId,
-        },
+        project: { companyId },
       },
     }),
 
     prisma.task.count({
       where: {
         assignedTo: userId,
-        project: {
-          companyId,
-        },
+        project: { companyId },
         status: "TODO",
       },
     }),
@@ -467,9 +393,7 @@ export const getUserTaskStats = async (
     prisma.task.count({
       where: {
         assignedTo: userId,
-        project: {
-          companyId,
-        },
+        project: { companyId },
         status: "IN_PROGRESS",
       },
     }),
@@ -477,34 +401,50 @@ export const getUserTaskStats = async (
     prisma.task.count({
       where: {
         assignedTo: userId,
-        project: {
-          companyId,
-        },
-        status: "REVIEW",
+        project: { companyId },
+        status: "DONE",
       },
     }),
 
     prisma.task.count({
       where: {
         assignedTo: userId,
-        project: {
-          companyId,
-        },
-        status: "COMPLETED",
+        project: { companyId },
+        status: "TESTING",
       },
     }),
 
     prisma.task.count({
       where: {
         assignedTo: userId,
-        project: {
-          companyId,
-        },
-        dueDate: {
-          lt: new Date(),
-        },
+        project: { companyId },
+        status: "QA_VERIFIED",
+      },
+    }),
+
+    prisma.task.count({
+      where: {
+        assignedTo: userId,
+        project: { companyId },
+        status: "RE_OPEN",
+      },
+    }),
+
+    prisma.task.count({
+      where: {
+        assignedTo: userId,
+        project: { companyId },
+        status: "DEPLOYMENT",
+      },
+    }),
+
+    prisma.task.count({
+      where: {
+        assignedTo: userId,
+        project: { companyId },
+        dueDate: { lt: new Date() },
         status: {
-          not: "COMPLETED",
+          notIn: ["DONE", "QA_VERIFIED", "DEPLOYMENT"],
         },
       },
     }),
@@ -512,23 +452,21 @@ export const getUserTaskStats = async (
 
   return {
     assigned,
-    todo,
-    inProgress,
-    review,
-    completed,
+    status: {
+      todo,
+      inProgress,
+      done,
+      testing,
+      qaVerified,
+      reOpen,
+      deployment,
+    },
     overdue,
   };
 };
 
-export const getUserProjectStats = async (
-  userId: string,
-  companyId: string,
-) => {
-  const [
-    total,
-    active,
-    completed,
-  ] = await Promise.all([
+export const getUserProjectStats = async (userId: string, companyId: string) => {
+  const [total, active, completed] = await Promise.all([
     prisma.project.count({
       where: {
         companyId,
@@ -572,10 +510,7 @@ export const getUserProjectStats = async (
   };
 };
 
-export const getUserRecentTasks = async (
-  userId: string,
-  companyId: string,
-) => {
+export const getUserRecentTasks = async (userId: string, companyId: string) => {
   return prisma.task.findMany({
     where: {
       assignedTo: userId,
@@ -609,10 +544,7 @@ export const getUserRecentTasks = async (
   });
 };
 
-export const getUserRecentComments = async (
-  userId: string,
-  companyId: string,
-) => {
+export const getUserRecentComments = async (userId: string, companyId: string) => {
   return prisma.comment.findMany({
     where: {
       userId,
@@ -644,10 +576,7 @@ export const getUserRecentComments = async (
   });
 };
 
-export const getUserRecentActivity = async (
-  userId: string,
-  companyId: string,
-) => {
+export const getUserRecentActivity = async (userId: string, companyId: string) => {
   return prisma.taskHistory.findMany({
     where: {
       userId,
@@ -682,10 +611,7 @@ export const getUserRecentActivity = async (
   });
 };
 
-export const getUserProjects = async (
-  userId: string,
-  companyId: string,
-) => {
+export const getUserProjects = async (userId: string, companyId: string) => {
   return prisma.project.findMany({
     where: {
       companyId,
@@ -714,16 +640,7 @@ export const getUserProjects = async (
 };
 
 export const getSuperadminStats = async () => {
-  const [
-    totalCompanies,
-    activeCompanies,
-    inactiveCompanies,
-    totalUsers,
-    totalAdmins,
-    totalRegularUsers,
-    totalProjects,
-    totalTasks,
-  ] = await Promise.all([
+  const [totalCompanies, activeCompanies, inactiveCompanies, totalUsers, totalAdmins, totalRegularUsers, totalProjects, totalTasks] = await Promise.all([
     prisma.company.count(),
 
     prisma.company.count({
@@ -787,13 +704,7 @@ export const getSuperadminStats = async () => {
 };
 
 export const getSubscriptionStats = async () => {
-  const [
-    total,
-    active,
-    trial,
-    expired,
-    cancelled,
-  ] = await Promise.all([
+  const [total, active, trial, expired, cancelled] = await Promise.all([
     prisma.subscription.count(),
 
     prisma.subscription.count({
@@ -856,18 +767,7 @@ export const getRecentCompanies = async () => {
 };
 
 export const getAdminTaskAnalytics = async (companyId: string) => {
-  const [
-    total,
-    pending,
-    inProgress,
-    completed,
-    cancelled,
-    overdue,
-    low,
-    medium,
-    high,
-    urgent,
-  ] = await Promise.all([
+  const [total, todo, inProgress, done, testing, qaVerified, reOpen, deployment, overdue, low, medium, high, urgent] = await Promise.all([
     prisma.task.count({
       where: { project: { companyId } },
     }),
@@ -889,65 +789,75 @@ export const getAdminTaskAnalytics = async (companyId: string) => {
     prisma.task.count({
       where: {
         project: { companyId },
-        status: "REVIEW",
+        status: "DONE",
       },
     }),
 
     prisma.task.count({
       where: {
         project: { companyId },
-        status: "COMPLETED",
+        status: "TESTING",
       },
     }),
 
     prisma.task.count({
       where: {
         project: { companyId },
-        dueDate: {
-          lt: new Date(),
-        },
+        status: "QA_VERIFIED",
+      },
+    }),
+
+    prisma.task.count({
+      where: {
+        project: { companyId },
+        status: "RE_OPEN",
+      },
+    }),
+
+    prisma.task.count({
+      where: {
+        project: { companyId },
+        status: "DEPLOYMENT",
+      },
+    }),
+
+    prisma.task.count({
+      where: {
+        project: { companyId },
+        dueDate: { lt: new Date() },
         status: {
-          not: "COMPLETED",
+          notIn: ["DONE", "QA_VERIFIED", "DEPLOYMENT"],
         },
       },
     }),
 
     prisma.task.count({
-      where: {
-        project: { companyId },
-        priority: "LOW",
-      },
+      where: { project: { companyId }, priority: "LOW" },
     }),
 
     prisma.task.count({
-      where: {
-        project: { companyId },
-        priority: "MEDIUM",
-      },
+      where: { project: { companyId }, priority: "MEDIUM" },
     }),
 
     prisma.task.count({
-      where: {
-        project: { companyId },
-        priority: "HIGH",
-      },
+      where: { project: { companyId }, priority: "HIGH" },
     }),
 
     prisma.task.count({
-      where: {
-        project: { companyId },
-        priority: "URGENT",
-      },
+      where: { project: { companyId }, priority: "URGENT" },
     }),
   ]);
 
   return {
     total,
     status: {
-      pending,
+      todo,
       inProgress,
-      completed,
-      cancelled,
+      done,
+      testing,
+      qaVerified,
+      reOpen,
+      deployment,
     },
     overdue,
     priority: {
@@ -960,11 +870,7 @@ export const getAdminTaskAnalytics = async (companyId: string) => {
 };
 
 export const getAdminProjectAnalytics = async (companyId: string) => {
-  const [
-    total,
-    active,
-    completed,
-  ] = await Promise.all([
+  const [total, active, completed] = await Promise.all([
     prisma.project.count({
       where: {
         companyId,

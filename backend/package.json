@@ -5,9 +5,9 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "dev": "nodemon --exec tsx src/server.ts",
-    "build": "webpack",
-    "start": "node dist/server.js",
+    "dev": "node init && nodemon --exec tsx src/server.ts",
+    "build": "node init && webpack",
+    "start": "node init && node dist/server.js",
     "postinstall": "prisma skills sync || exit 0"
   },
   "keywords": [],

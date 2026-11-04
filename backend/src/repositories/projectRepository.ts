@@ -79,6 +79,7 @@ export const createProject = async (data: {
   description?: string;
   startDate?: Date;
   endDate?: Date;
+  taskCodePrefix: string;
 }) => {
   return prisma.project.create({
     data: {
@@ -87,6 +88,7 @@ export const createProject = async (data: {
       description: data.description,
       startDate: data.startDate,
       endDate: data.endDate,
+      taskCodePrefix: data.taskCodePrefix,
     },
   });
 };
